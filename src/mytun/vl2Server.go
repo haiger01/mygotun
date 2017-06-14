@@ -28,7 +28,7 @@ var (
 
 func HttpGetMacTable(w http.ResponseWriter, req *http.Request){
 	mc := fdb.ShowClientMac()
-	mcjson, err := json.Marshal(mc)
+	mcjson, err := json.MarshalIndent(mc, "","\t")
 	if err != nil{
 		log.Println(err)
 		return
