@@ -53,7 +53,7 @@ func GetClientList() *list.List{
 }
 func PushClient(c *Client) *list.Element{
 	ClientLists.Lock.Lock()
-	e := GetClientList().PushBack(*c)
+	e := GetClientList().PushBack(c)
 	ClientLists.Lock.Unlock()
 	log.Printf("after push, ClientLists.List.len =%d\n", GetClientList().Len())
 	return e	

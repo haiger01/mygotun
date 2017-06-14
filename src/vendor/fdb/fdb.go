@@ -4,31 +4,44 @@ import (
 	"packet"
 	"log"
 	"sync"
+	"time"
 )
-
+type FdbMac struct {
+	mac packet.MAC
+	ft uint64
+}
 type FDB struct{
 	lock *sync.RWMutex
-	mactable map[packet.MAC]Client
+	mactable map[packet.MAC]*Client
 }
 var fdb *FDB
+var FdbTick uint64
 func Fdb() *FDB {
 	return fdb
 }
-func FdbMacTable() map[packet.MAC]Client {
+func FdbMacTable() map[packet.MAC]*Client {
 	return Fdb().mactable
 }
 func init() {
 	fdb = &FDB{
 		lock : new(sync.RWMutex),
-		mactable : make(map[packet.MAC]Client),
+		mactable : make(map[packet.MAC]*Client),
 	}
 	InitClientList()
+	go fdbtick()
 }
-func (f *FDB) Get(m packet.MAC) (Client, bool) {
+func fdbtick() {
+	FdbTick = 0
+	tt := time.Tick(time.Second * 3)
+	for _ = range tt {
+		FdbTick = FdbTick + 1
+	}
+}
+func (f *FDB) Get(m packet.MAC) (*Client, bool) {
 	c, ok := f.mactable[m]
 	return c, ok
 }
-func (f *FDB) Add(m packet.MAC, c Client) {
+func (f *FDB) Add(m packet.MAC, c *Client) {
 	
 	f.lock.Lock()
 	f.mactable[m] = c

@@ -45,18 +45,20 @@ func GetClientList() *list.List {
 func Fdb() *fdb.FDB {
 	return fdb.Fdb()
 }
+
 func flood(c *fdb.Client, pkt packet.Packet, len int) {
 	log.Printf("-------------- flooding  ------------\n")
 	var n *list.Element
 	for e := GetClientList().Front(); e != nil;  e = n {
 		n = e.Next()
-		ci, ok := e.Value.(fdb.Client)
+		ci, ok := e.Value.(*fdb.Client)
 		if !ok {
 			log.Printf(" can't happend\n")
 			GetClientList().Remove(e)
 			continue			
 		}
-		if ci.Conn() != c.Conn() {
+
+		if ci != c {
 			log.Println(c.Conn().RemoteAddr(), "write to", ci.Conn().RemoteAddr().Network(), ci.Conn().RemoteAddr().String())
 			_, err := ci.Conn().Write(pkt[:len])
 			if err != nil{
@@ -66,6 +68,7 @@ func flood(c *fdb.Client, pkt packet.Packet, len int) {
 	}
 	log.Printf("-------------- flood end  ------------\n")
 }
+
 func Forward(c *fdb.Client) {
 	pkt := make(packet.Packet, 65535)
 	for {
@@ -91,7 +94,7 @@ func Forward(c *fdb.Client) {
 		}
 
 		if _, ok := Fdb().Get(pkt.GetSrcMac()); !ok {
-			Fdb().Add(pkt.GetSrcMac(), *c)
+			Fdb().Add(pkt.GetSrcMac(), c)
 			//MtShowAll()
 		}
 		//arp broadcast
@@ -99,12 +102,11 @@ func Forward(c *fdb.Client) {
 			log.Printf("-------------- IsBroadcast ------------\n")
 			log.Printf("src  mac %s\n", pkt.GetSrcMac().String())
 			log.Printf("dst  mac %s\n", pkt.GetDstMac().String())
-			// forward to all clients  expect itself
 			flood(c, pkt, len)
 		}else{
 			//it is ip packet or unicast arp
 			if ci, ok := Fdb().Get(pkt.GetDstMac()); ok{
-				if ci.Conn() != c.Conn() {
+				if ci != c {
 					//log.Println("write to", ci.conn.RemoteAddr().Network(), ci.conn.RemoteAddr().String())
 					_, err := ci.Conn().Write(pkt[:len])
 					if err != nil{
