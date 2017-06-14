@@ -22,9 +22,9 @@ type Ether struct {
 func TranEther(b []byte) *Ether{
 	p := Packet(b)
 	return &Ether{
-		DstMac : (&p).GetDstMac(),
-		SrcMac : (&p).GetSrcMac(),
-		Proto  : (&p).GetProto(),
+		DstMac : p.GetDstMac(),
+		SrcMac : p.GetSrcMac(),
+		Proto  : p.GetProto(),
 	}
 }
 func (e *Ether) IsBroadcast() bool{

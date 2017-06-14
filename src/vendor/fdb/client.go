@@ -25,14 +25,11 @@ func NewClient(conn net.Conn) *Client{
 func (c *Client) Conn() net.Conn{
 	return c.conn
 }
-func (c *Client) Close(){
-	c.conn.Close()
+func (c *Client) Close(){	
 	//TODO: del fdb mac -> Client
-	for m, ci := range FdbMacTable(){
-		if ci.conn == c.conn {
-			Fdb().Del(m)
-		}
-	}
+	Fdb().DelFmnByClient(c)
+	//del mactable fdb macnode first, and then close conn
+	c.conn.Close()
 	RemoveClient(c)
 }
 

@@ -20,24 +20,20 @@ openssl req -new -x509 -key server.key -out server.pem -days3650
 */
 var (
 	listenAddr = flag.String("listenAddr", ":7878", "listenAddr, like 23.33.145.33:7878")
-	httpAddr = flag.String("httpAddr", "127.0.0.1:88", "check mactable")
+	httpAddr = flag.String("httpAddr", "127.0.0.1:88", "check mactable, localhost:88/clientmac")
 	tlsSK = flag.String("server.key", "./config/server.key", "tls server.key")
 	tlsSP = flag.String("server.pem", "./config/server.pem", "tls server.pem")
 	tlsEnable = flag.Bool("tls", false, "enable tls server")
 )
 
 func HttpGetMacTable(w http.ResponseWriter, req *http.Request){
-	mt := make(map[string]string)
-	for m, c := range fdb.FdbMacTable(){
-		mt[m.String()]= c.Conn().RemoteAddr().String()
-	}
-	//cm := make(map[string][]string)
-	mtjson, err := json.Marshal(mt)
+	mc := fdb.ShowClientMac()
+	mcjson, err := json.Marshal(mc)
 	if err != nil{
 		log.Println(err)
 		return
 	}
-	w.Write([]byte(mtjson))
+	w.Write([]byte(mcjson))
 }
 func GetClientList() *list.List {
 	return fdb.GetClientList()
@@ -89,33 +85,44 @@ func Forward(c *fdb.Client) {
 			log.Printf(" len =%d\n", len)
 			continue
 		}
+		/*
 		if !pkt.IsArp() && !pkt.IsIpPtk(){
 			continue
 		}
+		*/
+		ether := packet.TranEther(pkt)
+		if !ether.IsArp() && !ether.IsIpPtk(){
+			continue
+		}
 
-		if _, ok := Fdb().Get(pkt.GetSrcMac()); !ok {
-			Fdb().Add(pkt.GetSrcMac(), c)
+		if _, ok := Fdb().Get(ether.SrcMac); !ok {
+			Fdb().Add(ether.SrcMac, c)
 			//MtShowAll()
 		}
 		//arp broadcast
-		if  pkt.IsArp() && pkt.IsBroadcast(){
+		if  ether.IsArp() && ether.IsBroadcast(){
 			log.Printf("-------------- IsBroadcast ------------\n")
-			log.Printf("src  mac %s\n", pkt.GetSrcMac().String())
-			log.Printf("dst  mac %s\n", pkt.GetDstMac().String())
+			log.Printf("src  mac %s\n", ether.SrcMac.String())
+			log.Printf("dst  mac %s\n", ether.DstMac.String())
 			flood(c, pkt, len)
 		}else{
 			//it is ip packet or unicast arp
-			if ci, ok := Fdb().Get(pkt.GetDstMac()); ok{
-				if ci != c {
-					//log.Println("write to", ci.conn.RemoteAddr().Network(), ci.conn.RemoteAddr().String())
-					_, err := ci.Conn().Write(pkt[:len])
-					if err != nil{
-						ci.Close()
+			if i, ok := Fdb().Get(ether.DstMac); ok{
+				if fmn, ok := i.(*fdb.FdbMacNode); ok{
+					if fmn.GetClient() != c {
+						//log.Println("write to", ci.conn.RemoteAddr().Network(), ci.conn.RemoteAddr().String())
+						_, err := fmn.GetClient().Conn().Write(pkt[:len])
+						if err != nil{
+							fmn.GetClient().Close()
+						}
 					}
-				}
+				}else{
+					log.Printf("-----------oh shit , never happend -------------\n")
+					return
+				}				
 			}else{
-				log.Printf("src  mac %s ,dst  mac %s, dst mac is unkown ,so flood\n", 
-							pkt.GetSrcMac().String(), pkt.GetDstMac().String())
+				log.Printf("src  mac %s ,dst  mac %s, dst mac is unkown ,so flood\n",
+							ether.DstMac.String(), ether.SrcMac.String()/*pkt.GetSrcMac().String(), pkt.GetDstMac().String()*/)
 				flood(c, pkt, len)
 			}
 		}		
@@ -156,7 +163,7 @@ func main(){
 		checkError(err, "ListenTCP")
 	}
 
-	http.HandleFunc("/mactable", HttpGetMacTable)
+	http.HandleFunc("/clientmac", HttpGetMacTable)
 	go http.ListenAndServe(*httpAddr, nil)
 
 	for {
