@@ -11,6 +11,7 @@ import(
 	"mylog"
 	"crypto/tls"
 	"fdb"
+	_"net/http/pprof"
 )
 /*
 1、 生成服务器端的私钥
@@ -24,6 +25,8 @@ var (
 	tlsSK = flag.String("server.key", "./config/server.key", "tls server.key")
 	tlsSP = flag.String("server.pem", "./config/server.pem", "tls server.pem")
 	tlsEnable = flag.Bool("tls", false, "enable tls server")
+	pprofEnable = flag.Bool("pprof", false, "enable pprof")
+	ppAddr = flag.String("ppaddr", ":6060", "ppaddr , http://xxxx:6060/debug/pprof/")
 )
 
 func HttpGetMacTable(w http.ResponseWriter, req *http.Request){
@@ -165,6 +168,12 @@ func main(){
 
 	http.HandleFunc("/clientmac", HttpGetMacTable)
 	go http.ListenAndServe(*httpAddr, nil)
+
+	if *pprofEnable {
+		go func() {
+			log.Println(http.ListenAndServe(*ppAddr, nil))
+		}()
+	}
 
 	for {
 		conn, err := ln.Accept()

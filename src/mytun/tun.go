@@ -1,17 +1,19 @@
 package main
 import (
-"github.com/lab11/go-tuntap/tuntap"
- "log"
- "fmt"
- "os/exec"
- "encoding/binary"
- "flag"
- "net"
+	"github.com/lab11/go-tuntap/tuntap"
+	"log"
+	"fmt"
+	"os/exec"
+	"encoding/binary"
+	"flag"
+	"net"
 	"time"
 	"io/ioutil"
 	"packet"
 	"mylog"
 	"crypto/tls"
+	"net/http"
+	_"net/http/pprof"
 )
 
 var (
@@ -20,8 +22,14 @@ var (
 	tunname = flag.String("tundev","tap0"," tun dev name")
 	server = flag.String("server",":7878"," server like 203.156.34.98:7878")
 	tlsEnable = flag.Bool("tls", false, "enable tls connect")
+	pprofEnable = flag.Bool("pprof", false, "enable pprof")
+	ppAddr = flag.String("ppaddr", ":7070", "ppaddr , http://xxxx:7070/debug/pprof/")
 )
-
+/*
+go tool pprof http://localhost:7070/debug/pprof/heap
+go tool pprof http://localhost:7070/debug/pprof/profile
+web
+*/
 func cmdexec (cmds string, checkErr bool){
 	if !checkErr{
 		exec.Command("sh", "-c", cmds).Run()
@@ -92,7 +100,12 @@ func main () {
 
 	flag.Parse()
 	mylog.InitLog()
-	//log.Printf("=============ttest log===========\n")
+
+	if *pprofEnable {
+		go func() {
+			log.Println(http.ListenAndServe(*ppAddr, nil))
+		}()
+	}	
 	log.Printf("tun name =%s, br=%s server=%s\n", *tunname, *br, *server)
     tund, err = tuntap.Open(*tunname, tuntap.DevKind(*tuntype) , false)
 	if err != nil {
@@ -112,6 +125,10 @@ reconnect:
 	<-conn_ok 
 	go handleTunPkt(conn, tund)
 	<-reconn
+	
+	//tund.Close()
+	//time.Sleep(time.Second * 1)
+	
 	goto reconnect
 }
 func handleTunPkt(conn net.Conn, tund *tuntap.Interface){
@@ -119,7 +136,9 @@ func handleTunPkt(conn net.Conn, tund *tuntap.Interface){
 	for {
 		inpkt, err := tund.ReadPacket()
 		if err != nil{
+			log.Println("==============tund.ReadPacket error===", err)
 			log.Fatal(err)
+			return
 		}
 		
 		if len(inpkt.Packet) < 42 {
@@ -138,7 +157,7 @@ func handleTunPkt(conn net.Conn, tund *tuntap.Interface){
 		}
 
 		/*
-		//inpkt.Packet = echo_icmp(inpkt.Packet)
+		inpkt.Packet = echo_icmp(inpkt.Packet)
 		err = tund.WritePacket(inpkt)
 		if err != nil{
 			log.Fatal(err)
@@ -163,6 +182,11 @@ func handleSerConn(conn net.Conn, tund *tuntap.Interface, reconn chan int){
 			reconn <- 1
 			break
 		}
+		if len < 42 {
+			log.Printf("====== conn.read too small pkt, len=%d===========\n", len)
+			continue
+		}
+
 		inpkt := &tuntap.Packet{Packet: pkt[:len]}
 
 		ether := packet.TranEther(inpkt.Packet)
