@@ -28,7 +28,7 @@ var (
 	tlsEnable = flag.Bool("tls", false, "enable tls server")
 	pprofEnable = flag.Bool("pprof", false, "enable pprof")
 	ppAddr = flag.String("ppaddr", ":6060", "ppaddr , http://xxxx:6060/debug/pprof/")
-	serAddr = flag.String("serAddr", "127.0.0.1:9999", " the addr connect to ")
+	serAddr = flag.String("serAddr", "", " the addr connect to ,like 127.0.0.1:9999")
 )
 
 func HttpGetMacTable(w http.ResponseWriter, req *http.Request){
