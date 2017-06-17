@@ -36,7 +36,9 @@ func (c *Client) Conn() net.Conn {
 }
 
 func (c *Client) PutPktToChan(pkt packet.Packet) {
-	c.pktchan <- pkt
+	if !c.closed {
+		c.pktchan <- pkt
+	}	
 }
 
 func (c *Client) WriteFromChan() {
