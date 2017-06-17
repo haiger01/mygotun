@@ -68,15 +68,13 @@ func (f *FDB) Del(m packet.MAC) {
 	delete(f.mactable, m)
 	f.lock.Unlock()
 }
-func (f *FDB) DelFmnByClient(c *Client){
-	f.lock.Lock()
+func (f *FDB) DelFmnByClient(c *Client) {	
 	for m, i := range FdbMacTable(){
 		fmn := i.(*FdbMacNode)
 		if fmn.client == c {
 			Fdb().Del(m)
 		}
 	}
-	f.lock.Unlock()
 }
 func MtShowAll(){
 	for m, i := range FdbMacTable() {

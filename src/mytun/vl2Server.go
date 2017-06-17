@@ -12,6 +12,7 @@ import(
 	"crypto/tls"
 	"fdb"
 	_"net/http/pprof"
+	"time"
 )
 /*
 1、 生成服务器端的私钥
@@ -27,6 +28,7 @@ var (
 	tlsEnable = flag.Bool("tls", false, "enable tls server")
 	pprofEnable = flag.Bool("pprof", false, "enable pprof")
 	ppAddr = flag.String("ppaddr", ":6060", "ppaddr , http://xxxx:6060/debug/pprof/")
+	serAddr = flag.String("serAddr", "127.0.0.1:9999", " the addr connect to ")
 )
 
 func HttpGetMacTable(w http.ResponseWriter, req *http.Request){
@@ -59,17 +61,19 @@ func flood(c *fdb.Client, pkt packet.Packet, len int) {
 
 		if ci != c {
 			log.Println(c.Conn().RemoteAddr(), "write to", ci.Conn().RemoteAddr().Network(), ci.Conn().RemoteAddr().String())
+			/*
 			_, err := ci.Conn().Write(pkt[:len])
 			if err != nil{
 				ci.Close()
-			}
+			}*/
+			ci.PutPktToChan(pkt[:len])
 		}			
 	}
 	log.Printf("-------------- flood end  ------------\n")
 }
 
 func Forward(c *fdb.Client) {
-	pkt := make(packet.Packet, 65535)
+	pkt := make(packet.Packet, 65536)
 	for {
 		len, err := c.Conn().Read(pkt)
 		/*
@@ -114,10 +118,13 @@ func Forward(c *fdb.Client) {
 				if fmn, ok := i.(*fdb.FdbMacNode); ok{
 					if fmn.GetClient() != c {
 						//log.Println("write to", ci.conn.RemoteAddr().Network(), ci.conn.RemoteAddr().String())
-						_, err := fmn.GetClient().Conn().Write(pkt[:len])
+						//_, err := fmn.GetClient().Conn().Write(pkt[:len])						
+						/*
 						if err != nil{
 							fmn.GetClient().Close()
 						}
+						*/
+						fmn.GetClient().PutPktToChan(pkt[:len])
 					}
 				}else{
 					log.Printf("-----------oh shit , never happend -------------\n")
@@ -175,6 +182,10 @@ func main(){
 		}()
 	}
 
+	if *serAddr != "" {
+		go connectSer(*serAddr)
+	}
+	
 	for {
 		conn, err := ln.Accept()
 		if err != nil{
@@ -184,7 +195,24 @@ func main(){
 	}
 }
 
+func connectSer(serAddr string) {
+	conn_num := 0
+	reconnect:
+	conn, err := net.Dial("tcp4", serAddr)
+	if err != nil {
+		log.Println(err)
+		log.Printf("connect to %s time=%d \n", serAddr, conn_num)
+		time.Sleep(time.Second * 2)
+		conn_num += 1
+		goto reconnect
+	}	
+	conn_num = 0
+	handleClient(conn)
+	goto reconnect
+}
+
 func handleClient(conn net.Conn){
 	c := fdb.NewClient(conn)
+	go c.WriteFromChan()
 	Forward(c)	
 }
