@@ -63,7 +63,7 @@ type myio interface {
 	WriteFromChan()
 	//Write()
 	//GetPeer()
-	Close()
+	IsClose() bool
 }
 
 type mytun struct {
@@ -77,6 +77,7 @@ type myconn struct {
 	pktchan chan packet.Packet
 	writeQuit chan bool
 	reconnect chan bool
+	isClosed bool
 	peer myio	
 }
 
@@ -138,7 +139,9 @@ func (tun *mytun) GetPeer() myio {
 }
 
 func (tun *mytun) FwdToPeer(pkt packet.Packet){
-	tun.peer.PutPktToChan(pkt)
+	if tun.peer != nil && !tun.peer.IsClose() {
+		tun.peer.PutPktToChan(pkt)
+	}	
 }
 
 func (tun *mytun) PutPktToChan(pkt packet.Packet) {
@@ -158,8 +161,8 @@ func (tun *mytun) WriteFromChan() {
 	}
 }
 
-func (tun *mytun) Close() {
-
+func (tun *mytun) IsClose() bool {
+	return false
 }
 
 func  NewConn() *myconn{
@@ -167,6 +170,7 @@ func  NewConn() *myconn{
 		pktchan : make(chan packet.Packet, 4096),
 		writeQuit : make(chan bool, 1),
 		reconnect : make(chan bool, 1),
+		isClosed : false,
 	}
 }
 
@@ -223,7 +227,9 @@ func (c *myconn) GetPeer() myio {
 	return c.peer
 }
 func (c *myconn) FwdToPeer(pkt packet.Packet) {
-	c.peer.PutPktToChan(pkt)
+	if c.peer != nil {
+		c.peer.PutPktToChan(pkt)
+	}	
 }
 
 func (c *myconn) PutPktToChan(pkt packet.Packet) {
@@ -250,6 +256,7 @@ func (c *myconn) WriteFromChan() {
 func (c *myconn) Close() {
 	log.Printf("%s -> %s is  closing \n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
 	c.conn.Close()
+	c.isClosed = true
 	c.writeQuit <- true
 }
 
@@ -258,6 +265,9 @@ func (c *myconn) Reconnect() {
 	c.reconnect <- true
 }
 
+func (c *myconn) IsClose() bool {
+	return c.isClosed
+}
 /*
 func bind(a, b interface{}) bool {	
 	switch t := a.(type) {
