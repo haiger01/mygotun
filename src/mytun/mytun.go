@@ -33,6 +33,7 @@ go tool pprof http://localhost:7070/debug/pprof/heap
 go tool pprof http://localhost:7070/debug/pprof/profile
 web
 */
+
 func cmdexec (cmds string, checkErr bool){
 	if !checkErr{
 		exec.Command("sh", "-c", cmds).Run()
@@ -119,9 +120,9 @@ func (tun *mytun) Read() {
 
 		ether := packet.TranEther(inpkt.Packet)
 		if ether.IsBroadcast() && ether.IsArp() {
-			log.Println("---------arp broadcast from tun/tap ----------")
-			log.Println("dst mac :", ether.DstMac.String())
-			log.Println("src mac :", ether.SrcMac.String())
+			mylog.Info("%s","---------arp broadcast from tun/tap ----------")
+			mylog.Info("dst mac :%s", ether.DstMac.String())
+			mylog.Info("src mac :%s", ether.SrcMac.String())
 		}
 		if !ether.IsArp() && !ether.IsIpPtk(){
 			continue
@@ -209,15 +210,15 @@ func (c *myconn) Read() {
 			break
 		}
 		if len < 42 {
-			log.Printf("====== conn.read too small pkt, len=%d===========\n", len)
+			mylog.Warning("====== conn.read too small pkt, len=%d===========\n", len)
 			continue
 		}
 
 		ether := packet.TranEther(pkt)
 		if ether.IsBroadcast() && ether.IsArp() {
-			log.Println("---------arp broadcast from server ----------")
-			log.Println("dst mac :", ether.DstMac.String())
-			log.Println("src mac :", ether.SrcMac.String())
+			mylog.Info("%s","---------arp broadcast from server ----------")
+			mylog.Info("dst mac :%s", ether.DstMac.String())
+			mylog.Info("src mac :%s", ether.SrcMac.String())
 		}
 		//PutPktToChan(pkt, c.peer)
 		c.FwdToPeer(pkt[:len])
@@ -242,7 +243,8 @@ func (c *myconn) WriteFromChan() {
 		select {
 			case pkt, ok := <- c.pktchan:
 				if !ok {
-					log.Printf("%s -> %s pktchan closed\n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
+					log.Printf("%s -> %s pktchan closed, quit the writefromchan  goroutine\n",
+						 c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
 					log.Printf(" c.pktchan is closed, quit the writefromchan  goroutine\n")		
 					return	
 				}	
@@ -339,9 +341,10 @@ func bindPeer(a, b interface{}) bool{
 
 func main () {  
 	flag.Parse()
-	mylog.InitLog()
+	mylog.InitLog(mylog.LINFO)
 
-	log.Printf("tun name =%s, br=%s server=%s, enable pprof %v, ppaddr=%s \n", *tunname, *br, *server, *pprofEnable, *ppAddr)
+	mylog.Notice("tun name =%s, br=%s server=%s, enable pprof %v, ppaddr=%s \n", *tunname, *br, *server, *pprofEnable, *ppAddr)
+	mylog.Info("tun name =%s, br=%s server=%s, enable pprof %v, ppaddr=%s \n", *tunname, *br, *server, *pprofEnable, *ppAddr)
 	if *pprofEnable {
 		go func() {
 			log.Println(http.ListenAndServe(*ppAddr, nil))

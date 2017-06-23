@@ -12,6 +12,14 @@ import (
 )
 
 var logFile = flag.String("log.file", "", "save log file path")
+const(
+	LDEBUG = iota
+	LINFO	//1
+	LNOTICE
+	LWARNING
+	LERROR
+)
+var loglevel int
 
 var lf *os.File
 
@@ -27,7 +35,8 @@ func fileExist(filename string) bool {
 	return err == nil || os.IsExist(err)
 }
 
-func InitLog() {
+func InitLog(log_level int) {
+	loglevel = log_level
 	logfile := *logFile
 	var err error
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
@@ -59,4 +68,31 @@ func Close() {
 	if lf != nil {
 		lf.Close()
 	}
+}
+
+func Debug(format string, a ...interface{}){
+	if loglevel <= LDEBUG {
+		log.Printf("[Debug] " + format, a...)
+	}
+}
+func Info(format string, a ...interface{}){
+	if loglevel <= LINFO {
+		log.Printf("[Info] " + format, a...)
+	}		
+}
+
+func Notice(format string, a ...interface{}){
+	if loglevel <= LNOTICE {
+		log.Printf("[Notice] " + format, a...)
+	}
+}
+func Warning(format string, a ...interface{}){
+	if loglevel <= LWARNING {
+		log.Printf("[Warning] " + format, a...)
+	}		
+}
+func Error(format string, a ...interface{}){
+	if loglevel <= LERROR {
+		log.Printf("[Error] " + format, a...)
+	}		
 }

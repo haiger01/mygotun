@@ -152,7 +152,7 @@ func main(){
 	var ln net.Listener
 	var err error
 	flag.Parse()
-	mylog.InitLog()
+	mylog.InitLog(mylog.LDEBUG)
 
 	if *tlsEnable {
 		cert, err := tls.LoadX509KeyPair(*tlsSP, *tlsSK)
