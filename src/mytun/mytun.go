@@ -63,6 +63,7 @@ type myio interface {
 	WriteFromChan()
 	//Write()
 	//GetPeer()
+	SetPeer( peer myio) bool
 	IsClose() bool
 }
 
@@ -239,15 +240,25 @@ func (c *myconn) PutPktToChan(pkt packet.Packet) {
 func (c *myconn) WriteFromChan() {
 	for {
 		select {
-			case pkt := <- c.pktchan:
+			case pkt, ok := <- c.pktchan:
+				if !ok {
+					log.Printf("%s -> %s pktchan closed\n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
+					log.Printf(" c.pktchan is closed, quit the writefromchan  goroutine\n")		
+					return	
+				}	
 				len, err := c.conn.Write(pkt)
 				if err != nil{
 					log.Printf(" write len=%d, err=%s\n", len, err.Error())		
 					return
 				}
-			case <-c.writeQuit:
-				log.Printf("chan write_quit recive \n")	
-				log.Printf("%s -> %s is closed \n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())	
+				
+			case q, ok := <-c.writeQuit:
+				if !ok {
+					log.Printf(" c.writeQuit is closed , quit the writefromchan  goroutine\n")		
+				} else {
+					log.Printf("chan write_quit recive message: quit=%v, ok=%v\n", q, ok)	
+				}					
+				log.Printf("%s -> %s is closed \n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())				
 				return
 		}
 	}
@@ -258,6 +269,9 @@ func (c *myconn) Close() {
 	c.conn.Close()
 	c.isClosed = true
 	c.writeQuit <- true
+	time.Sleep(time.Millisecond * 10)
+	close(c.pktchan)
+	close(c.writeQuit)
 }
 
 func (c *myconn) Reconnect() {
@@ -291,18 +305,22 @@ func bind(a, b interface{}) bool {
 	return true
 }
 */
-func (c *myconn) SetPeer( peer myio) bool {
+func (c *myconn) SetPeer(peer myio) bool {
 	c.peer = peer
 	return true
 }
-func (tun *mytun) SetPeer( peer myio) bool {
+func (tun *mytun) SetPeer(peer myio) bool {
 	tun.peer = peer
 	return true
 }
-func bind(a, b myio) {	
+func bind(a, b myio) {
+	a.SetPeer(b)
+	b.SetPeer(a)
+	/*	
 	if bindPeer(a, b) == false || bindPeer(b, a) == false {
 		log.Fatal("setpeer error")
-	}	
+	}
+	*/	
 }
 func bindPeer(a, b interface{}) bool{
 	v := reflect.ValueOf(a)
@@ -341,5 +359,6 @@ func main () {
 		go cc.WriteFromChan()
 		go cc.Read()
 		<-cc.reconnect
+		close(cc.reconnect)
 	}
 }
