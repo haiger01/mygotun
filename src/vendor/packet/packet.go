@@ -3,6 +3,7 @@ package packet
 
 import (
 	"fmt"
+	"unsafe"
 )
 var(
 	IpPtk [2]byte = [...]byte{0x08, 0x00}
@@ -20,13 +21,17 @@ type Ether struct {
 	Proto	[2]byte
 }
 func TranEther(b []byte) *Ether{
+	/*
 	p := Packet(b)
 	return &Ether{
 		DstMac : p.GetDstMac(),
 		SrcMac : p.GetSrcMac(),
 		Proto  : p.GetProto(),
 	}
+	*/
+	return (*Ether)(unsafe.Pointer(&b[0]))
 }
+
 func (e *Ether) IsBroadcast() bool{
 	return e.DstMac == BroadcastAddr
 }
