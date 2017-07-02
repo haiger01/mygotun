@@ -27,6 +27,9 @@ var (
 	tlsEnable = flag.Bool("tls", false, "enable tls connect")
 	pprofEnable = flag.Bool("pprof", false, "enable pprof, true or false")
 	ppAddr = flag.String("ppaddr", ":7070", "ppaddr , http://xxxx:7070/debug/pprof/")
+	chanSize = flag.Int("chanSize", 4096, "chan Size")
+	lnAddr = flag.String("lnAddr",""," server like 203.156.34.98:7878")
+	DebugEn = flag.Bool("DebugEn", false, "debug, show ip packet information")
 )
 /*
 go tool pprof http://localhost:7070/debug/pprof/heap
@@ -85,7 +88,7 @@ type myconn struct {
 
 func NewTun() *mytun{
 	return &mytun {
-		pktchan : make(chan packet.Packet, 4096),
+		pktchan : make(chan packet.Packet, *chanSize),
 	}
 }
 
@@ -104,7 +107,8 @@ func (tun *mytun) Open() {
 	fmt.Printf("================tun open ==========\n")
 }
 
-func (tun *mytun) Read() {	
+func (tun *mytun) Read() {
+	//go recvsp()
 	for {
 		inpkt, err := tun.tund.ReadPacket()
 		if err != nil{
@@ -113,8 +117,8 @@ func (tun *mytun) Read() {
 			return
 		}
 		
-		if len(inpkt.Packet) < 42 {
-			log.Printf(" read len=%d\n", len(inpkt.Packet))
+		if len(inpkt.Packet) < 42 || len(inpkt.Packet) > 1514 {
+			log.Printf("====== read len=%d out of range =======\n", len(inpkt.Packet))
 			continue
 		}
 
@@ -125,10 +129,37 @@ func (tun *mytun) Read() {
 			mylog.Info("src mac :%s", ether.SrcMac.String())
 		}
 		if !ether.IsArp() && !ether.IsIpPtk(){
+			//mylog.Warning(" not arp ,and not ip packet, ether type =0x%0x%0x ===============\n", ether.Proto[0], ether.Proto[1])
 			continue
 		}
+		if *DebugEn && ether.IsIpPtk() {
+			iphdr, err := packet.ParseIPHeader(inpkt.Packet[packet.EtherSize:])
+			if err != nil {
+				mylog.Warning("ParseIPHeader err: %s\n",err.Error())
+			}
+			fmt.Println("tun read ",iphdr.String())
+		}
 		//PutPktToChan(inpkt.Packet, tun.peer)
-		tun.FwdToPeer(inpkt.Packet)
+		//static(len(inpkt.Packet))
+		data := make([]byte, len(inpkt.Packet))
+		copy(data, inpkt.Packet[:len(inpkt.Packet)]) 
+		tun.FwdToPeer(data)
+	}
+}
+var rxsum int64 
+func static(len int) {
+	//atomic.AddInt64(&rxsum, int64(len))
+	rxsum += int64(len)
+}
+
+func recvsp() {
+	var current int64
+	var sp  int64
+	for {
+		time.Sleep(time.Second * 1)
+		sp = rxsum - current
+		current = rxsum
+		fmt.Printf("%dkb\n", sp/1024)
 	}
 }
 
@@ -169,14 +200,28 @@ func (tun *mytun) IsClose() bool {
 
 func  NewConn() *myconn{
 	return &myconn{
-		pktchan : make(chan packet.Packet, 4096),
+		pktchan : make(chan packet.Packet, *chanSize),
 		writeQuit : make(chan bool, 1),
 		reconnect : make(chan bool, 1),
 		isClosed : false,
 	}
 }
 
-func (c *myconn) Open() {	
+func (c *myconn) Open() {
+		
+	if *lnAddr != "" {
+		ln, err := net.Listen("tcp4", *lnAddr)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		c.conn, err = ln.Accept()
+		if err != nil {
+			log.Fatalln(err)
+		}
+		c.conn.(*net.TCPConn).SetNoDelay(true)			
+		fmt.Printf("%s have come\n", c.conn.RemoteAddr().String())
+		return		
+	}
 	var err error
 	n := 1
 	ReConnect:
@@ -197,11 +242,12 @@ func (c *myconn) Open() {
 		time.Sleep(time.Second * 2)
 		goto ReConnect
 	}
-	fmt.Println("clinet :", c.conn.LocalAddr().String(),"connect to Server:", c.conn.RemoteAddr())
+	c.conn.(*net.TCPConn).SetNoDelay(true)	
+	fmt.Println("success ,clinet:", c.conn.LocalAddr().String(),"connect to Server:", c.conn.RemoteAddr())
 }
 
 func (c *myconn) Read() {
-	pkt := make(packet.Packet, 65536)	
+	pkt := make(packet.Packet, 1514)	
 	for {
 		len , err := c.conn.Read(pkt)
 		if err != nil{
@@ -213,15 +259,28 @@ func (c *myconn) Read() {
 			mylog.Warning("====== conn.read too small pkt, len=%d===========\n", len)
 			continue
 		}
-
+		// TODO packet combine
+		if *DebugEn && len > 1500 {
+			mylog.Warning("====== conn.read too small big %d,maybe tcp packet combine===========\n", len)
+		}
+		
 		ether := packet.TranEther(pkt)
 		if ether.IsBroadcast() && ether.IsArp() {
 			mylog.Info("%s","---------arp broadcast from server ----------")
 			mylog.Info("dst mac :%s", ether.DstMac.String())
 			mylog.Info("src mac :%s", ether.SrcMac.String())
 		}
+		if *DebugEn && ether.IsIpPtk() {
+			iphdr, err := packet.ParseIPHeader(pkt[packet.EtherSize:])
+			if err != nil {
+				mylog.Warning("ParseIPHeader err: %s\n",err.Error())
+			}
+			fmt.Printf("conn read len =%d:%s", len, iphdr.String())
+		}
 		//PutPktToChan(pkt, c.peer)
-		c.FwdToPeer(pkt[:len])
+		data := make([]byte, len)
+		copy(data, pkt[:len])
+		c.FwdToPeer(data)
 	}
 }
 
@@ -253,7 +312,14 @@ func (c *myconn) WriteFromChan() {
 					log.Printf(" write len=%d, err=%s\n", len, err.Error())		
 					return
 				}
-				
+				ether := packet.TranEther(pkt)
+				if *DebugEn && ether.IsIpPtk() {
+					iphdr, err := packet.ParseIPHeader(pkt[packet.EtherSize:])
+					if err != nil {
+						log.Println(err.Error())
+					}
+					fmt.Println("send to", c.conn.RemoteAddr().String(), iphdr.String())
+				}
 			case q, ok := <-c.writeQuit:
 				if !ok {
 					log.Printf(" c.writeQuit is closed , quit the writefromchan  goroutine\n")		
@@ -343,8 +409,10 @@ func main () {
 	flag.Parse()
 	mylog.InitLog(mylog.LINFO)
 
-	mylog.Notice("tun name =%s, br=%s server=%s, enable pprof %v, ppaddr=%s \n", *tunname, *br, *server, *pprofEnable, *ppAddr)
-	mylog.Info("tun name =%s, br=%s server=%s, enable pprof %v, ppaddr=%s \n", *tunname, *br, *server, *pprofEnable, *ppAddr)
+	mylog.Notice("tun name =%s, br=%s server=%s, enable pprof %v, ppaddr=%s, chanSize=%d \n", *tunname, *br,
+					 *server, *pprofEnable, *ppAddr, *chanSize)
+	mylog.Info("tun name =%s, br=%s server=%s, enable pprof %v, ppaddr=%s, chanSize=%d\n", *tunname, *br, *server, 
+					*pprofEnable, *ppAddr, *chanSize)
 	if *pprofEnable {
 		go func() {
 			log.Println(http.ListenAndServe(*ppAddr, nil))
