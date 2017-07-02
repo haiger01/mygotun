@@ -185,7 +185,8 @@ func main(){
 	if *serAddr != "" {
 		go connectSer(*serAddr)
 	}
-	
+	log.Printf("listenAddr=%s, httpAddr =%s for check clientmac, serAddr=%s, tlsEnable =%v\n", *listenAddr,
+				*httpAddr, *serAddr, *tlsEnable)
 	for {
 		conn, err := ln.Accept()
 		if err != nil{
