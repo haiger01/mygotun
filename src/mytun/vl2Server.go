@@ -15,8 +15,8 @@ import(
 	"time"
 	"fmt"
 	"encoding/binary"
-	//"io"
-	//"bufio"
+	"io"
+	"bufio"
 )
 /*
 1、 生成服务器端的私钥
@@ -33,6 +33,7 @@ var (
 	pprofEnable = flag.Bool("pprof", false, "enable pprof")
 	ppAddr = flag.String("ppaddr", ":6060", "ppaddr , http://xxxx:6060/debug/pprof/")
 	serAddr = flag.String("serAddr", "", " the addr connect to ,like 127.0.0.1:9999")
+	readFwdMode =  flag.Int("rfm", 1, " readFwdMode, 1 means read one by one and forward, 2 means read big pkt and parase forward")
 )
 
 func HttpGetMacTable(w http.ResponseWriter, req *http.Request){
@@ -83,7 +84,7 @@ type LastPkt struct {
 }
 var last *LastPkt
 
-func Forward(c *fdb.Client) {
+func Forward2(c *fdb.Client) {
 	pkt := make(packet.Packet, 65536)
 	last := &LastPkt{make([]byte, 1514+2), 0, 0}	
 	for {				
@@ -106,7 +107,7 @@ func Forward(c *fdb.Client) {
 		ParseFwdPkt(c, pkt, len, last)		
 	}
 }
-/*
+
 func Forward(c *fdb.Client) {
 	pkt := make(packet.Packet, 65536)
 	cr := bufio.NewReader(c.Conn())
@@ -138,7 +139,7 @@ func Forward(c *fdb.Client) {
 		ForwardPkt(c, data)
 	}
 }
-*/
+
 func ParseFwdPkt(c *fdb.Client, pkt []byte, len int, last *LastPkt) {	
 	pktStart, pktEnd := 0, 0	
 	n := 0
@@ -306,5 +307,9 @@ func connectSer(serAddr string) {
 func handleClient(conn net.Conn){
 	c := fdb.NewClient(conn)
 	go c.WriteFromChan()
-	Forward(c)	
+	if *readFwdMode == 1 {
+		Forward(c)
+	} else {
+		Forward2(c)
+	}		
 }
