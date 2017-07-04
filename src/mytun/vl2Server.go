@@ -15,8 +15,8 @@ import(
 	"time"
 	"fmt"
 	"encoding/binary"
-	"io"
-	"bufio"
+	//"io"
+	//"bufio"
 )
 /*
 1、 生成服务器端的私钥
@@ -81,11 +81,11 @@ type LastPkt struct {
 	pktLen int
 	needMore int
 }
-var last LastPkt
-/*
+var last *LastPkt
+
 func Forward(c *fdb.Client) {
 	pkt := make(packet.Packet, 65536)
-	last := LastPkt{make([]byte, 1514+2), 0, 0}	
+	last := &LastPkt{make([]byte, 1514+2), 0, 0}	
 	for {				
 		len, err := c.Conn().Read(pkt)
 		if err != nil{
@@ -106,7 +106,7 @@ func Forward(c *fdb.Client) {
 		ParseFwdPkt(c, pkt, len, last)		
 	}
 }
-*/
+/*
 func Forward(c *fdb.Client) {
 	pkt := make(packet.Packet, 65536)
 	cr := bufio.NewReader(c.Conn())
@@ -138,15 +138,15 @@ func Forward(c *fdb.Client) {
 		ForwardPkt(c, data)
 	}
 }
-
-func ParseFwdPkt(c *fdb.Client, pkt []byte, len int, last LastPkt) {	
+*/
+func ParseFwdPkt(c *fdb.Client, pkt []byte, len int, last *LastPkt) {	
 	pktStart, pktEnd := 0, 0	
 	n := 0
 	for i := 0; pktEnd < len; i++ {
 		//check the remaining work from last handle packet
 		if last.needMore != 0 {
 			if last.needMore <= len {		
-				//copy data and foward
+				//copy to data and foward
 				data := make([]byte, last.pktLen+last.needMore)
 				copy(data, last.buf[:last.pktLen])
 				copy(data[last.pktLen:], pkt[:last.needMore])				
@@ -156,7 +156,7 @@ func ParseFwdPkt(c *fdb.Client, pkt []byte, len int, last LastPkt) {
 				//reset last
 				last.needMore = 0
 				continue
-			}else {
+			} else {
 				fmt.Printf("can't be here, last.needMore=%d, totall len=%d\n", last.needMore, len)
 				last.needMore = 0
 				break;
