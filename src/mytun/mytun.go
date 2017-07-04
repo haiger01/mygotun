@@ -271,26 +271,28 @@ func (c *myconn) Read() {
 		}
 		// TODO packet combine
 		// if *DebugEn && len > 1500 {
-		// 	mylog.Warning("====== conn.read too small big %d,maybe tcp packet combine===========\n", len)
+		// 	mylog.Warning("====== conn.read too big %d,maybe tcp packet combine===========\n", len)
 		// }
 		
 		pktStart, pktEnd = 0, 0
 		for n := 0; pktEnd < len; {
 			//check the remaining work from last handle packet
 			if last.needMore != 0  {
-				if last.needMore <= len {
-					copy(last.buf[last.pktLen:], pkt[:last.needMore])
+				if last.needMore <= len {					
+					//make data and foward
+					data := make([]byte, last.pktLen+last.needMore)
+					copy(data, last.buf[:last.pktLen])
+					copy(data[last.pktLen:], pkt[:last.needMore])
+					c.FwdToPeer(data)
 					//set pktEnd
 					pktEnd = last.needMore
-					//foward
-					data := make([]byte, last.pktLen+last.needMore)
-					copy(data, last.buf[:last.pktLen+last.needMore])
-					c.FwdToPeer(data)
 					//reset last
 					last.needMore = 0
 					continue
 				}else {
 					fmt.Printf("can't be here, last.needMore=%d, totall len=%d\n", last.needMore, len)
+					last.needMore = 0
+					break
 				}
 			}
 
@@ -481,5 +483,6 @@ func main () {
 		go cc.Read()
 		<-cc.reconnect
 		close(cc.reconnect)
+		time.Sleep(time.Millisecond * 100)
 	}
 }
