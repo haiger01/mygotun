@@ -96,14 +96,10 @@ func Forward2(c *fdb.Client) {
 		}
 		
 		if len < 42 {
-			log.Printf(" len =%d\n", len)
+			log.Printf(" len =%d \n\n", len)
 			continue
 		}
-		// TODO tcp packet combine
-		// if *DebugEn && len > 1500 {
-		// 	mylog.Warning("====== conn.read too small big %d,maybe tcp packet combine===========\n", len)
-		// }		
-		 
+		// TODO Parse the combine tcp packet 
 		ParseFwdPkt(c, pkt, len, last)		
 	}
 }
@@ -124,6 +120,11 @@ func Forward(c *fdb.Client) {
 			break
 		}		
 		pktLen := int(binary.BigEndian.Uint16(lenBuf))
+		if pktLen < 42 || pktLen > 1514 {
+			log.Printf("parase pktLen=%d out of range \n", pktLen)
+			c.Close()
+			break
+		}
 		rn, err := io.ReadFull(cr, pkt[:pktLen+2])
 		if err != nil{
 			log.Println("conn read fail:", err.Error())
@@ -141,6 +142,12 @@ func Forward(c *fdb.Client) {
 }
 
 func ParseFwdPkt(c *fdb.Client, pkt []byte, len int, last *LastPkt) {	
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println(err)
+		}
+	}()
+
 	pktStart, pktEnd := 0, 0	
 	n := 0
 	for i := 0; pktEnd < len; i++ {
