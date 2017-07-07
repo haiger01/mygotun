@@ -29,8 +29,8 @@ var (
 	httpAddr = flag.String("httpAddr", "127.0.0.1:88", "check mactable, localhost:88/clientmac")
 	tlsSK = flag.String("server.key", "./config/server.key", "tls server.key")
 	tlsSP = flag.String("server.pem", "./config/server.pem", "tls server.pem")
-	tlsEnable = flag.Bool("tls", false, "enable tls server")
-	pprofEnable = flag.Bool("pprof", false, "enable pprof")
+	tlsEnable = flag.Bool("tls", false, "enable tls server, default false")
+	pprofEnable = flag.Bool("pprof", false, "enable pprof, default false")
 	ppAddr = flag.String("ppaddr", ":6060", "ppaddr , http://xxxx:6060/debug/pprof/")
 	serAddr = flag.String("serAddr", "", " the addr connect to ,like 127.0.0.1:9999")
 	readFwdMode =  flag.Int("rfm", 1, " readFwdMode, 1 means read one by one and forward, 2 means read big pkt and parase forward")
@@ -85,13 +85,13 @@ type LastPkt struct {
 var last *LastPkt
 
 func Forward2(c *fdb.Client) {
+	defer c.Close()
 	pkt := make(packet.Packet, 65536)
 	last := &LastPkt{make([]byte, 1514+2), 0, 0}	
 	for {				
 		len, err := c.Conn().Read(pkt)
 		if err != nil{
-			log.Println("conn read fail:", err.Error())
-			c.Close()
+			log.Println("conn read fail:", err.Error())			
 			break
 		}
 		
@@ -105,6 +105,7 @@ func Forward2(c *fdb.Client) {
 }
 
 func Forward(c *fdb.Client) {
+	defer c.Close()
 	pkt := make(packet.Packet, 65536)
 	cr := bufio.NewReader(c.Conn())
 	for {
@@ -115,20 +116,17 @@ func Forward(c *fdb.Client) {
 		// }
 		lenBuf, err := cr.Peek(2)
 		if err != nil{
-			log.Println("conn read fail:", err.Error())
-			c.Close()
+			log.Println("conn read fail:", err.Error())			
 			break
 		}		
 		pktLen := int(binary.BigEndian.Uint16(lenBuf))
 		if pktLen < 42 || pktLen > 1514 {
 			log.Printf("parase pktLen=%d out of range \n", pktLen)
-			c.Close()
 			break
 		}
 		rn, err := io.ReadFull(cr, pkt[:pktLen+2])
 		if err != nil{
 			log.Println("conn read fail:", err.Error())
-			c.Close()
 			break
 		}
 		//if err == nil , means rn == pktLen+2, so don't need to check 
