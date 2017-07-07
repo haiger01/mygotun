@@ -102,6 +102,7 @@ func (tun *mytun) Open() {
 
 	confs := fmt.Sprintf("ifconfig %s up\n", *tunname)
 	if *br != "" {
+		confs += fmt.Sprintf("brctl addbr %s\n", *br)
 		confs += fmt.Sprintf("brctl addif %s %s\n", *br, *tunname)
 	}
 	exec.Command("sh","-c", confs).Run()
@@ -236,6 +237,7 @@ func (c *myconn) Open() {
  		c.conn, err  = tls.Dial("tcp", *server, tlsconf)
 	}else {
 		c.conn, err = net.Dial("tcp4", *server)
+		c.conn.(*net.TCPConn).SetNoDelay(true)
 	}
 
 	if err != nil {
@@ -244,8 +246,7 @@ func (c *myconn) Open() {
 		fmt.Println(err.Error())
 		time.Sleep(time.Second * 2)
 		goto ReConnect
-	}
-	c.conn.(*net.TCPConn).SetNoDelay(true)	
+	}	
 	fmt.Println("success ,clinet:", c.conn.LocalAddr().String(),"connect to Server:", c.conn.RemoteAddr())
 }
 
