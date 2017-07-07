@@ -226,6 +226,7 @@ func (c *myconn) Open() {
 		fmt.Printf("%s have come\n", c.conn.RemoteAddr().String())
 		return		
 	}
+
 	var err error
 	n := 1
 	ReConnect:
@@ -236,8 +237,7 @@ func (c *myconn) Open() {
  		}
  		c.conn, err  = tls.Dial("tcp", *server, tlsconf)
 	}else {
-		c.conn, err = net.Dial("tcp4", *server)
-		c.conn.(*net.TCPConn).SetNoDelay(true)
+		c.conn, err = net.Dial("tcp4", *server)		
 	}
 
 	if err != nil {
@@ -246,7 +246,12 @@ func (c *myconn) Open() {
 		fmt.Println(err.Error())
 		time.Sleep(time.Second * 2)
 		goto ReConnect
-	}	
+	}
+	
+	if tcpConn, ok := c.conn.(*net.TCPConn); ok {
+		tcpConn.SetNoDelay(true)
+	}
+
 	fmt.Println("success ,clinet:", c.conn.LocalAddr().String(),"connect to Server:", c.conn.RemoteAddr())
 }
 
