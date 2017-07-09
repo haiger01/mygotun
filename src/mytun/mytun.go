@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	br = flag.String("br", ""," add tun/tap to bridge")
+	br = flag.String("br", "br0"," add tun/tap to bridge")
 	tuntype = flag.Int("tuntype", int(tuntap.DevTap)," type, 1 means tap and 0 means tun")
 	tunname = flag.String("tundev","tap0"," tun dev name")
 	server = flag.String("server",":7878"," server like 203.156.34.98:7878")
@@ -113,7 +113,8 @@ func (tun *mytun) Read() {
 	//go recvsp()
 	pktLen := 0
 	for {
-		inpkt, err := tun.tund.ReadPacket()
+		data := make([]byte, 2048)
+		inpkt, err := tun.tund.ReadPacket2(data[2:])
 		if err != nil{
 			log.Println("==============tund.ReadPacket error===", err)
 			log.Fatal(err)
@@ -131,7 +132,7 @@ func (tun *mytun) Read() {
 			mylog.Info("dst mac :%s", ether.DstMac.String())
 			mylog.Info("src mac :%s", ether.SrcMac.String())
 		}
-		if !ether.IsArp() && !ether.IsIpPtk(){
+		if !ether.IsArp() && !ether.IsIpPtk() {
 			//mylog.Warning(" not arp ,and not ip packet, ether type =0x%0x%0x ===============\n", ether.Proto[0], ether.Proto[1])
 			continue
 		}
@@ -144,10 +145,13 @@ func (tun *mytun) Read() {
 		}
 		//PutPktToChan(inpkt.Packet, tun.peer)
 		//static(len(inpkt.Packet))
-		data := make([]byte, pktLen + 2)
+
+		// data := make([]byte, pktLen + 2)
+		// binary.BigEndian.PutUint16(data[:2], uint16(pktLen))
+		// copy(data[2:], inpkt.Packet[:pktLen]) 
 		binary.BigEndian.PutUint16(data[:2], uint16(pktLen))
-		copy(data[2:], inpkt.Packet[:pktLen]) 
-		tun.FwdToPeer(data)
+		copy(data[2:], inpkt.Packet[:pktLen])
+		tun.FwdToPeer(data[:pktLen+2])
 	}
 }
 var rxsum int64 
