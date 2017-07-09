@@ -19,7 +19,7 @@ openssl genrsa -out server.key 2048
 openssl req -new -x509 -key server.key -out server.pem -days3650
 */
 var (
-	listenAddr = flag.String("listenAddr", ":7878", "listenAddr, like 23.33.145.33:7878")
+	listenAddr = flag.String("listenAddr", "", "listenAddr, like 23.33.145.33:7878")
 	httpAddr = flag.String("httpAddr", "127.0.0.1:88", "check mactable, localhost:88/clientmac")
 	tlsSK = flag.String("server.key", "./config/server.key", "tls server.key")
 	tlsSP = flag.String("server.pem", "./config/server.pem", "tls server.pem")
@@ -28,6 +28,9 @@ var (
 	ppAddr = flag.String("ppaddr", ":6060", "ppaddr , http://xxxx:6060/debug/pprof/")
 	serAddr = flag.String("serAddr", "", " the addr connect to ,like 127.0.0.1:9999")
 	readFwdMode =  flag.Int("rfm", 1, " readFwdMode, 1 means read one by one and forward, 2 means read big pkt and parase forward")
+	br = flag.String("br", "br0"," add tun/tap to bridge")
+	tuntype = flag.Int("tuntype", 1," type, 1 means tap and 0 means tun")
+	tundev = flag.String("tundev","tap0"," tun dev name")
 )
 
 func HttpGetMacTable(w http.ResponseWriter, req *http.Request){
@@ -55,6 +58,34 @@ func main(){
 	flag.Parse()
 	mylog.InitLog(mylog.LDEBUG)
 
+	log.Printf("listenAddr=%s, httpAddr =%s for check clientmac, serAddr=%s, tlsEnable =%v, br=%s, tundev=%s\n", 
+			*listenAddr, *httpAddr, *serAddr, *tlsEnable, *br, *tundev)
+
+	// for show fdb mactable
+	http.HandleFunc("/clientmac", HttpGetMacTable)
+	go http.ListenAndServe(*httpAddr, nil)
+
+	// for pprof
+	if *pprofEnable {
+		go func() {
+			log.Println(http.ListenAndServe(*ppAddr, nil))
+		}()
+	}
+
+	if *serAddr != "" {
+		go connectSer(*serAddr)
+	}
+	
+	if *tundev != "" {
+		go createTun()
+	}
+
+	if *listenAddr == "" {
+		for {
+			time.Sleep(time.Minute)
+		}
+	}
+
 	if *tlsEnable {
 		cert, err := tls.LoadX509KeyPair(*tlsSP, *tlsSK)
 		if err != nil {
@@ -67,27 +98,10 @@ func main(){
 		ln, err = tls.Listen("tcp4", *listenAddr, tlsconf)
 		checkError(err, "ListenTCP")
 	}else {
-		//addr, err := net.ResolveTCPAddr("tcp4", *listenAddr)
-		//checkError(err, "ResolveTCPAddr")
-		//ln, err = net.ListenTCP("tcp4", addr)
 		ln, err = net.Listen("tcp4", *listenAddr)
 		checkError(err, "ListenTCP")
 	}
 
-	http.HandleFunc("/clientmac", HttpGetMacTable)
-	go http.ListenAndServe(*httpAddr, nil)
-
-	if *pprofEnable {
-		go func() {
-			log.Println(http.ListenAndServe(*ppAddr, nil))
-		}()
-	}
-
-	if *serAddr != "" {
-		go connectSer(*serAddr)
-	}
-	log.Printf("listenAddr=%s, httpAddr =%s for check clientmac, serAddr=%s, tlsEnable =%v\n", *listenAddr,
-				*httpAddr, *serAddr, *tlsEnable)
 	for {
 		conn, err := ln.Accept()
 		if err != nil{
@@ -98,27 +112,46 @@ func main(){
 }
 
 func connectSer(serAddr string) {
-	conn_num := 0
+	conn_th, conn_num := 1, 1
+	
 	reconnect:
 	conn, err := net.Dial("tcp4", serAddr)
 	if err != nil {
 		log.Println(err)
-		log.Printf("connect to %s time=%d \n", serAddr, conn_num)
+		log.Printf("conn_th=%d, connect to %s time=%d \n", conn_th, serAddr, conn_num)
 		time.Sleep(time.Second * 2)
 		conn_num += 1
 		goto reconnect
 	}	
 	conn_num = 0
 	handleClient(conn)
+	conn_th += 1
 	goto reconnect
 }
 
-func handleClient(conn net.Conn){
-	c := fdb.NewClient(conn)
+func createTun() {
+	open_th, open_num := 1, 1
+	for {		
+		tun, err := fdb.OpenTun(*br, *tundev, *tuntype)
+		if err != nil {
+			log.Println(err)
+			log.Printf("open_th=%d, open tun %s fail, time=%d \n", open_th, *tundev, open_num)
+			open_num += 1
+			time.Sleep(time.Second)
+			continue
+		} 
+		open_num = 0
+		handleClient(tun)
+		open_th += 1
+	}
+}
+
+func handleClient(cio fdb.Cio) {
+	c := fdb.NewClient(cio)
 	go c.WriteFromChan()
 	if *readFwdMode == 1 {
-		c.Forward()
+		c.ReadForward()
 	} else {
-		c.Forward2()
+		c.ReadForward2()
 	}		
 }

@@ -8,6 +8,11 @@ import(
 	"io"
 	"container/list"
 	"encoding/binary"
+	"net"
+)
+
+const (
+	HeadSize = 2 //uint16 size
 )
 
 func flood(c *Client, pkt packet.Packet, len int) {
@@ -23,7 +28,7 @@ func flood(c *Client, pkt packet.Packet, len int) {
 		}
 
 		if ci != c {
-			log.Println(c.Conn().RemoteAddr(), "write to", ci.Conn().RemoteAddr().Network(), ci.Conn().RemoteAddr().String())
+			//log.Println(c.Conn().RemoteAddr(), "write to", ci.Conn().RemoteAddr().Network(), ci.Conn().RemoteAddr().String())
 			/*
 			_, err := ci.Conn().Write(pkt[:len])
 			if err != nil{
@@ -42,12 +47,13 @@ type LastPkt struct {
 }
 var last *LastPkt
 
-func (c *Client) Forward2() {
+func (c *Client) ReadForward2() {
 	defer c.Close()
 	pkt := make(packet.Packet, 65536)
-	last := &LastPkt{make([]byte, 1514+2), 0, 0}	
+	last := &LastPkt{make([]byte, 1514+HeadSize), 0, 0}	
 	for {				
-		len, err := c.Conn().Read(pkt)
+		//len, err := c.Conn().Read(pkt)
+		len, err := c.cio.Read(pkt)
 		if err != nil{
 			log.Println("conn read fail:", err.Error())			
 			break
@@ -62,38 +68,53 @@ func (c *Client) Forward2() {
 	}
 }
 
-func (c *Client) Forward() {
+func (c *Client) ReadForward() {
 	defer c.Close()
 	pkt := make(packet.Packet, 65536)
-	cr := bufio.NewReader(c.Conn())
-	for {
-		// if err := binary.Read(cr, binary.BigEndian, &pktLen); err != nil {
-		// 	log.Println("conn read fail:", err.Error())
-		// 	c.Close()
-		// 	break			
-		// }
-		lenBuf, err := cr.Peek(2)
-		if err != nil{
-			log.Println("conn read fail:", err.Error())			
-			break
-		}		
-		pktLen := int(binary.BigEndian.Uint16(lenBuf))
-		if pktLen < 42 || pktLen > 1514 {
-			log.Printf("parase pktLen=%d out of range \n", pktLen)
-			break
+	cr := bufio.NewReader(c.cio)
+	if _, ok := c.cio.(net.Conn); ok {
+		for {
+			// if err := binary.Read(cr, binary.BigEndian, &pktLen); err != nil {
+			// 	log.Println("conn read fail:", err.Error())
+			// 	c.Close()
+			// 	break			
+			// }
+			lenBuf, err := cr.Peek(HeadSize)
+			if err != nil{
+				log.Println("conn read fail:", err.Error())			
+				break
+			}		
+			pktLen := int(binary.BigEndian.Uint16(lenBuf))
+			if pktLen < 42 || pktLen > 1514 {
+				log.Printf("parase pktLen=%d out of range \n", pktLen)
+				break
+			}
+			rn, err := io.ReadFull(cr, pkt[:pktLen+HeadSize])
+			if err != nil{
+				log.Println("conn read fail:", err.Error())
+				break
+			}
+			//if err == nil , means rn == pktLen+HeadSize, so don't need to check 
+			// if rn != pktLen+HeadSize {
+			// 	log.Println(" something wrong, read rn=%d, pktLen+HeadSize =%d \n", rn, pktLen+HeadSize)
+			// }
+			data := make([]byte, rn)
+			copy(data, pkt[:rn])
+			ForwardPkt(c, data)
 		}
-		rn, err := io.ReadFull(cr, pkt[:pktLen+2])
-		if err != nil{
-			log.Println("conn read fail:", err.Error())
-			break
+	}
+
+	if _, ok := c.cio.(*mytun); ok {
+		for {
+			rn, err := cr.Read(pkt)
+			if err != nil{
+				log.Println("conn read fail:", err.Error())			
+				break
+			}
+			data := make([]byte, rn)
+			copy(data, pkt[:rn])
+			ForwardPkt(c, data)
 		}
-		//if err == nil , means rn == pktLen+2, so don't need to check 
-		// if rn != pktLen+2 {
-		// 	log.Println(" something wrong, read rn=%d, pktLen+2 =%d \n", rn, pktLen+2)
-		// }
-		data := make([]byte, rn)
-		copy(data, pkt[:rn])
-		ForwardPkt(c, data)
 	}
 }
 
@@ -127,10 +148,10 @@ func ParseFwdPkt(c *Client, pkt []byte, len int, last *LastPkt) {
 			}
 		}
 
-		if pktEnd + 2 > len {
+		if pktEnd + HeadSize > len {
 			fmt.Printf("something wrong: pktEnd=%d, totall len=%d\n", pktEnd, len)
 			break;
-			//panic("pktEnd + 2 > len")	
+			//panic("pktEnd + HeadSize > len")	
 		}
 		n =	int(binary.BigEndian.Uint16(pkt[pktEnd:]))
 		if n < 42 || n > 1514 {
@@ -138,7 +159,7 @@ func ParseFwdPkt(c *Client, pkt []byte, len int, last *LastPkt) {
 			break;
 		}
 		pktStart = pktEnd
-		pktEnd = pktStart + 2 + n
+		pktEnd = pktStart + HeadSize + n
 		if pktEnd > len {
 			//log.Printf("====== out of range, pktStart=%d, n=%d, pktEnd=%d, totall len=%d, handle it next read===========\n", 
 			//				pktStart, n, pktEnd, len)
@@ -147,7 +168,7 @@ func ParseFwdPkt(c *Client, pkt []byte, len int, last *LastPkt) {
 			break;
 		}	
 		// ok forwarding now	
-		data := make([]byte, n+2)
+		data := make([]byte, n+HeadSize)
 		copy(data, pkt[pktStart:pktEnd])
 		ForwardPkt(c, data)
 	}
@@ -155,7 +176,7 @@ func ParseFwdPkt(c *Client, pkt []byte, len int, last *LastPkt) {
 
 func ForwardPkt(c *Client, pkt []byte) {
 	len := len(pkt)
-	ether := packet.TranEther(pkt[2:])
+	ether := packet.TranEther(pkt[HeadSize:])
 	if !ether.IsArp() && !ether.IsIpPtk(){
 		return
 	}

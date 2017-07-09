@@ -30,16 +30,16 @@ type FDB struct{
 	lock *sync.RWMutex
 	mactable map[packet.MAC]I
 }
-var fdb *FDB
+var myfdb *FDB
 var FdbTick uint64
 func Fdb() *FDB {
-	return fdb
+	return myfdb
 }
 func FdbMacTable() map[packet.MAC]I {
 	return Fdb().mactable
 }
 func init() {
-	fdb = &FDB{
+	myfdb = &FDB{
 		lock : new(sync.RWMutex),
 		mactable : make(map[packet.MAC]I),
 	}
@@ -79,7 +79,7 @@ func (f *FDB) DelFmnByClient(c *Client) {
 func MtShowAll(){
 	for m, i := range FdbMacTable() {
 		fmn := i.(*FdbMacNode)
-		log.Printf("mac =%s, c =%s\n", m.String(), fmn.client.conn.RemoteAddr())
+		log.Printf("mac =%s, c =%s\n", m.String(), fmn.client.LocalString())
 	}
 }
 func ShowClientMac() map[string][]string {
@@ -97,7 +97,7 @@ func ShowClientMac() map[string][]string {
 		for m, i := range FdbMacTable(){
 			if fmn, ok := i.(*FdbMacNode); ok {
 				if fmn.client == c {
-					caddr := fmn.GetClient().Conn().RemoteAddr().String()
+					caddr := fmn.GetClient().LocalString()
 					mt[caddr] = append(mt[caddr], m.String())
 				}
 			}else{
