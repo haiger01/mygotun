@@ -9,7 +9,7 @@ var(
 	IpPtk [2]byte = [...]byte{0x08, 0x00}
 	ArpPkt [2]byte = [...]byte{0x08, 0x06}
 	BroadcastAddr [6]byte = [...]byte{0xff,0xff,0xff,0xff,0xff,0xff} 
-	
+	EtherSize = 14
 )
 
 type MAC [6]byte
