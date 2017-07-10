@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 	"container/list"
+	"bytes"
 )
 type I interface{
 
@@ -97,7 +98,15 @@ func ShowClientMac() map[string][]string {
 		for m, i := range FdbMacTable(){
 			if fmn, ok := i.(*FdbMacNode); ok {
 				if fmn.client == c {
-					caddr := fmn.GetClient().LocalString()
+					caddr := fmn.client.LocalString()
+					//log.Printf("========== caddr key=%s, len=%d======\n", caddr, len(caddr))
+					cb :=[]byte(caddr)
+					index := bytes.IndexByte(cb, 0)
+					//log.Printf("index =%d\n",index)
+					if index > 0 && index < len(caddr) {
+						caddr = string(cb[0:index])
+					 	log.Println(caddr)
+					}
 					mt[caddr] = append(mt[caddr], m.String())
 				}
 			}else{
@@ -108,6 +117,6 @@ func ShowClientMac() map[string][]string {
 		}
 
 	}
-
+	//log.Println(mt)
 	return mt
 }

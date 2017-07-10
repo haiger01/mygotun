@@ -40,7 +40,8 @@ func HttpGetMacTable(w http.ResponseWriter, req *http.Request){
 		log.Println(err)
 		return
 	}
-	w.Write([]byte(mcjson))
+	//log.Println(string(mcjson))
+	w.Write(mcjson)
 }
 
 func checkError(err error, info string) bool{
