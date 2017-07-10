@@ -42,47 +42,47 @@ func OpenTun(br string, tunname string, tuntype int) (tun *mytun, err error) {
 		return nil, err
 	}
 
-	fmt.Printf("================tun open successfully==========\n")
+	fmt.Printf("================tun dev:%s open successfully==========\n", tun.tund.Name())
 	return
 }
 
 func (tun *mytun) Read(buf []byte) (n int, err error) {
-	n = 0
-	for {
-		inpkt, err := tun.tund.ReadPacket()
-		if err != nil {
-			log.Println("==============tund.ReadPacket error===", err)
-			//log.Fatal(err)
-			return n, err
-		}
-		n = len(inpkt.Packet)
-		if n < 42 || n > 1514 {
-			log.Printf("======tun read len=%d out of range =======\n", n)
-			continue
-		}
+	var inpkt *tuntap.Packet
+	n = 0	
+	inpkt, err = tun.tund.ReadPacket2(buf[HeadSize:])
+	//inpkt, err := tun.tund.ReadPacket()
+	if err != nil {
+		log.Println("==============tund.ReadPacket error===", err)
+		//log.Fatal(err)
+		return
+	}
+	n = len(inpkt.Packet)
+	if n < 42 || n > 1514 {
+		log.Printf("======tun read len=%d out of range =======\n", n)
+		return
+	}
 
-		ether := packet.TranEther(inpkt.Packet)
-		if ether.IsBroadcast() && ether.IsArp() {
-			log.Println("---------arp broadcast from tun/tap ----------")
-			log.Printf("dst mac :%s", ether.DstMac.String())
-			log.Printf("src mac :%s", ether.SrcMac.String())
+	ether := packet.TranEther(inpkt.Packet)
+	if ether.IsBroadcast() && ether.IsArp() {
+		log.Println("---------arp broadcast from tun/tap ----------")
+		log.Printf("dst mac :%s", ether.DstMac.String())
+		log.Printf("src mac :%s", ether.SrcMac.String())
+	}
+	if !ether.IsArp() && !ether.IsIpPtk(){
+		//mylog.Warning(" not arp ,and not ip packet, ether type =0x%0x%0x ===============\n", ether.Proto[0], ether.Proto[1])
+		return
+	}
+	if *DebugEn && ether.IsIpPtk() {
+		iphdr, err := packet.ParseIPHeader(inpkt.Packet[packet.EtherSize:])
+		if err != nil {
+			log.Printf("ParseIPHeader err: %s\n",err.Error())
 		}
-		if !ether.IsArp() && !ether.IsIpPtk(){
-			//mylog.Warning(" not arp ,and not ip packet, ether type =0x%0x%0x ===============\n", ether.Proto[0], ether.Proto[1])
-			continue
-		}
-		if *DebugEn && ether.IsIpPtk() {
-			iphdr, err := packet.ParseIPHeader(inpkt.Packet[packet.EtherSize:])
-			if err != nil {
-				log.Printf("ParseIPHeader err: %s\n",err.Error())
-			}
-			log.Println("tun read ",iphdr.String())
-		}
-		binary.BigEndian.PutUint16(buf, uint16(n))
-		copy(buf[HeadSize:], inpkt.Packet[:n])
-		n += HeadSize
-		return n, nil
-	}	
+		log.Println("tun read ",iphdr.String())
+	}
+	binary.BigEndian.PutUint16(buf, uint16(n))
+	copy(buf[HeadSize:], inpkt.Packet[:n])
+	n += HeadSize
+	return
 }
 
 func (tun *mytun) Write(pkt []byte) (n int, err error) {
