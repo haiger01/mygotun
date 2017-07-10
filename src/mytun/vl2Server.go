@@ -20,7 +20,7 @@ openssl req -new -x509 -key server.key -out server.pem -days3650
 */
 var (
 	listenAddr = flag.String("listenAddr", "", "listenAddr, like 23.33.145.33:7878")
-	httpAddr = flag.String("httpAddr", "127.0.0.1:88", "check mactable, localhost:88/clientmac")
+	httpAddr = flag.String("httpAddr", "", "127.0.0.1:88, check mactable, localhost:88/clientmac")
 	tlsSK = flag.String("server.key", "./config/server.key", "tls server.key")
 	tlsSP = flag.String("server.pem", "./config/server.pem", "tls server.pem")
 	tlsEnable = flag.Bool("tls", false, "enable tls server, default false")
@@ -62,8 +62,10 @@ func main(){
 			*listenAddr, *httpAddr, *serAddr, *tlsEnable, *br, *tundev)
 
 	// for show fdb mactable
-	http.HandleFunc("/clientmac", HttpGetMacTable)
-	go http.ListenAndServe(*httpAddr, nil)
+	if *httpAddr != "" {
+		http.HandleFunc("/clientmac", HttpGetMacTable)
+		go http.ListenAndServe(*httpAddr, nil)
+	}
 
 	// for pprof
 	if *pprofEnable {
