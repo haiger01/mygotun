@@ -115,17 +115,32 @@ func main(){
 }
 
 func connectSer(serAddr string) {
+	var conn net.Conn
+	var err error
 	conn_th, conn_num := 1, 1
 	
 	reconnect:
-	conn, err := net.Dial("tcp4", serAddr)
+	if *tlsEnable {
+		tlsconf := &tls.Config{
+ 			InsecureSkipVerify: true,
+ 		}
+ 		conn, err  = tls.Dial("tcp", serAddr, tlsconf)
+	}else {
+		conn, err = net.Dial("tcp4", serAddr)		
+	}
+
 	if err != nil {
 		log.Println(err)
 		log.Printf("conn_th=%d, connect to %s time=%d \n", conn_th, serAddr, conn_num)
 		time.Sleep(time.Second * 2)
 		conn_num += 1
 		goto reconnect
-	}	
+	}
+
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		tcpConn.SetNoDelay(true)
+	}
+
 	conn_num = 0
 	handleClient(conn)
 	conn_th += 1
