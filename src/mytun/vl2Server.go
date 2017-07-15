@@ -19,6 +19,10 @@ openssl genrsa -out server.key 2048
 openssl req -new -x509 -key server.key -out server.pem -days3650
 */
 var (
+	buildTime string
+	commitId string
+	appVersion = "1.0.0"
+	version = flag.Bool("v", true, "show version information")
 	listenAddr = flag.String("listenAddr", "", "listenAddr, like 23.33.145.33:7878")
 	httpAddr = flag.String("httpAddr", "", "127.0.0.1:88, check mactable, localhost:88/clientmac")
 	tlsSK = flag.String("server.key", "./config/server.key", "tls server.key")
@@ -58,7 +62,9 @@ func main(){
 	var err error
 	flag.Parse()
 	mylog.InitLog(mylog.LDEBUG)
-
+	if *version {
+		log.Printf("appVersion=%s, buildTime=%s, commitId=%s\n", appVersion, buildTime, commitId)
+	}
 	log.Printf("listenAddr=%s, httpAddr =%s for check clientmac, serAddr=%s, tlsEnable =%v, br=%s, tundev=%s\n", 
 			*listenAddr, *httpAddr, *serAddr, *tlsEnable, *br, *tundev)
 
