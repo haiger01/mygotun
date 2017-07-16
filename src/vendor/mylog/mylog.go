@@ -20,6 +20,7 @@ const(
 	LERROR
 )
 var loglevel int
+var depth int = 2
 
 var lf *os.File
 
@@ -72,27 +73,32 @@ func Close() {
 
 func Debug(format string, a ...interface{}){
 	if loglevel <= LDEBUG {
-		log.Printf("[Debug] " + format, a...)
+		//log.Printf("[Debug] " + format, a...)
+		log.Output(depth, fmt.Sprintf("[Debug] " + format, a...))
 	}
 }
 func Info(format string, a ...interface{}){
 	if loglevel <= LINFO {
-		log.Printf("[Info] " + format, a...)
+		//log.Printf("[Info] " + format, a...)
+		log.Output(depth, fmt.Sprintf("[Info] " + format, a...))
 	}		
 }
 
 func Notice(format string, a ...interface{}){
 	if loglevel <= LNOTICE {
-		log.Printf("[Notice] " + format, a...)
+		//log.Printf("[Notice] " + format, a...)
+		log.Output(depth, fmt.Sprintf("[Notice] " + format, a...))
 	}
 }
 func Warning(format string, a ...interface{}){
 	if loglevel <= LWARNING {
-		log.Printf("[Warning] " + format, a...)
+		//log.Printf("[Warning] " + format, a...)
+		log.Output(depth, fmt.Sprintf("[Warning] " + format, a...))
 	}		
 }
 func Error(format string, a ...interface{}){
 	if loglevel <= LERROR {
-		log.Printf("[Error] " + format, a...)
+		//log.Printf("[Error] " + format, a...)
+		log.Output(depth, fmt.Sprintf("[Error] " + format, a...))
 	}		
 }
