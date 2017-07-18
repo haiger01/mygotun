@@ -35,6 +35,7 @@ var (
 	br = flag.String("br", "br0"," add tun/tap to bridge")
 	tuntype = flag.Int("tuntype", 1," type, 1 means tap and 0 means tun")
 	tundev = flag.String("tundev","tap0"," tun dev name")
+	ipstr = flag.String("ipstr", "", "set tun/tap or br ip address")
 )
 
 func HttpGetMacTable(w http.ResponseWriter, req *http.Request){
@@ -65,6 +66,8 @@ func main(){
 	if *version {
 		log.Printf("appVersion=%s, buildTime=%s, commitId=%s\n", appVersion, buildTime, commitId)
 	}
+	mylog.Warning("listenAddr=%s, httpAddr =%s for check clientmac, serAddr=%s, tlsEnable =%v, br=%s, tundev=%s\n", 
+			*listenAddr, *httpAddr, *serAddr, *tlsEnable, *br, *tundev)
 	log.Printf("listenAddr=%s, httpAddr =%s for check clientmac, serAddr=%s, tlsEnable =%v, br=%s, tundev=%s\n", 
 			*listenAddr, *httpAddr, *serAddr, *tlsEnable, *br, *tundev)
 
@@ -156,15 +159,19 @@ func connectSer(serAddr string) {
 func createTun() {
 	open_th, open_num := 1, 1
 	for {		
-		tun, err := fdb.OpenTun(*br, *tundev, *tuntype)
+		tun, err := fdb.OpenTun(*br, *tundev, *tuntype, *ipstr)
 		if err != nil {
 			log.Println(err)
 			log.Printf("open_th=%d, open tun %s fail, time=%d \n", open_th, *tundev, open_num)
 			open_num += 1
 			time.Sleep(time.Second)
+			if open_num > 5 {
+				log.Printf("quit to open tun %s, fail time =%d \n", *tundev, open_num)
+				break
+			}
 			continue
-		} 
-		open_num = 0
+		}
+		open_num = 0		
 		handleClient(tun)
 		open_th += 1
 	}

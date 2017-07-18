@@ -26,17 +26,24 @@ func (tun *mytun) Close() error {
 	return tun.tund.Close()
 }
 
-func OpenTun(br string, tunname string, tuntype int) (tun *mytun, err error) {	
+func OpenTun(br string, tunname string, tuntype int, ipstr string) (tun *mytun, err error) {	
 	tun = &mytun{}
 	tun.tund, err = tuntap.Open(tunname, tuntap.DevKind(tuntype) , false)
 	if err != nil {
 		return nil, err
 	}
-	confs := fmt.Sprintf("ifconfig %s up\n", tunname)
+
+	confs := fmt.Sprintf("ifconfig %s up\n", tunname)	
 	if br != "" {
 		confs += fmt.Sprintf("brctl addbr %s\n", br)
-		confs += fmt.Sprintf("brctl addif %s %s\n", br, tunname)
+		confs += fmt.Sprintf("brctl addif %s %s\n", br, tunname)	
+		if ipstr != "" {
+			confs += fmt.Sprintf("ifconfig %s %s\n", br, ipstr)
+		}
+	} else if ipstr != "" {
+		confs += fmt.Sprintf("ifconfig %s %s\n", tunname, ipstr)
 	}
+
 	err = exec.Command("sh","-c", confs).Run()
 	if err != nil {
 		return nil, err
