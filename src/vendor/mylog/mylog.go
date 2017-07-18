@@ -51,7 +51,7 @@ func InitLog(log_level int) {
 			fileSuffix := path.Ext(filename) //获取文件后缀
 			filename_olny := strings.TrimSuffix(filename, fileSuffix)
 			logfile = path.Dir(logfile) + "/" + filename_olny +
-					fmt.Sprintf("%d-%d-%d_%d-%d-%d", year, month, day, t.Hour(), t.Minute(), t.Second()) +
+					fmt.Sprintf("_%d-%d-%d_%d-%d-%d", year, month, day, t.Hour(), t.Minute(), t.Second()) +
 					fileSuffix
 			fmt.Printf("create new log file name: %s\n", logfile)
 		}
