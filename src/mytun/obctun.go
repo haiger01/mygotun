@@ -66,6 +66,36 @@ func cmdexec (cmds string, checkErr bool){
 	}
 }
 
+func ShowPktInfo(pkt []byte) {
+	if *tuntype == 1 {
+		ether := packet.TranEther(pkt)
+		if  ether.IsBroadcast() && ether.IsArp() {
+			log.Println("---------arp broadcast from tun/tap ----------")
+			log.Printf("dst mac :%s", ether.DstMac.String())
+			log.Printf("src mac :%s", ether.SrcMac.String())
+		}
+		/*
+		if !ether.IsArp() && !ether.IsIpPtk() {
+			//mylog.Warning(" not arp ,and not ip packet, ether type =0x%02x===============\n", ether.Proto)
+			continue
+		}*/
+
+		if  ether.IsIpPtk() {
+			iphdr, err := packet.ParseIPHeader(pkt[packet.EtherSize:])
+			if err != nil {
+				log.Printf("ParseIPHeader err: %s\n", err.Error())
+			}
+			fmt.Println("tun read: ", iphdr.String())
+		}
+	} else {
+		iphdr, err := packet.ParseIPHeader(pkt)
+		if err != nil {
+			log.Printf("ParseIPHeader err: %s\n", err.Error())
+		}
+		fmt.Println("tun read: ", iphdr.String())
+	}			
+}
+
 type myio interface {
 	Open()
 	Read()	
@@ -78,7 +108,9 @@ type myio interface {
 type mytun struct {
 	tund *tuntap.Interface
 	pktchan chan packet.Packet
-	peer myio	
+	peer myio
+	rx_bytes	uint64
+	tx_bytes	uint64		
 }
 
 type myconn struct {
@@ -88,7 +120,9 @@ type myconn struct {
 	reconnect chan bool
 	isClosed bool
 	peer myio
-	sync.Mutex	
+	sync.Mutex
+	rx_bytes	uint64
+	tx_bytes	uint64	
 }
 
 func NewTun() *mytun{
@@ -128,52 +162,24 @@ func (tun *mytun) Read() {
 	for {
 		data := make([]byte, 2048)
 		inpkt, err := tun.tund.ReadPacket2(data[2:])
-		if err != nil{
-			log.Println("==============tund.ReadPacket error===", err)
-			log.Fatal(err)
-			return
+		if err != nil {
+			log.Panicf("==============tund.ReadPacket error %s===", err.Error())
 		}
+
 		pktLen = len(inpkt.Packet)
 		if /*pktLen < 42 ||*/ pktLen > 1514 {
-			log.Printf("======tun read len=%d out of range =======\n", pktLen)
-			continue
+			log.Panicf("======tun read len=%d out of range =======\n", pktLen)
+			//continue
 		}
 
-		if *tuntype == 1 {
-			if *DebugEn {
-				ether := packet.TranEther(inpkt.Packet)
-				if  ether.IsBroadcast() && ether.IsArp() {
-					log.Println("---------arp broadcast from tun/tap ----------")
-					log.Printf("dst mac :%s", ether.DstMac.String())
-					log.Printf("src mac :%s", ether.SrcMac.String())
-				}
-				/*
-				if !ether.IsArp() && !ether.IsIpPtk() {
-					//mylog.Warning(" not arp ,and not ip packet, ether type =0x%02x===============\n", ether.Proto)
-					continue
-				}*/
-
-				if  ether.IsIpPtk() {
-					iphdr, err := packet.ParseIPHeader(inpkt.Packet[packet.EtherSize:])
-					if err != nil {
-						log.Printf("ParseIPHeader err: %s\n", err.Error())
-					}
-					fmt.Println("tun read: ", iphdr.String())
-				}
-			}
-		} else {
-			if *DebugEn {
-				iphdr, err := packet.ParseIPHeader(inpkt.Packet)
-				if err != nil {
-					log.Printf("ParseIPHeader err: %s\n", err.Error())
-				}
-				fmt.Println("tun read: ", iphdr.String())
-			}			
+		if *DebugEn {
+			ShowPktInfo(inpkt.Packet)
 		}
 
 		binary.BigEndian.PutUint16(data[:2], uint16(pktLen))
 		copy(data[2:], inpkt.Packet[:pktLen])
 		tun.FwdToPeer(data[:pktLen+2])
+		tun.rx_bytes += uint64(pktLen)
 	}
 }
 
@@ -197,11 +203,12 @@ func (tun *mytun) PutPktToChan(pkt packet.Packet) {
 
 func (tun *mytun) WriteFromChan() {
 	for pkt := range tun.pktchan {		
-		inpkt := &tuntap.Packet{Packet: pkt[:]}
+		inpkt := &tuntap.Packet{Packet: pkt}
 		err := tun.tund.WritePacket(inpkt)
 		if err != nil {
-			log.Fatal(err)
+			log.Panicln(err)
 		}
+		tun.tx_bytes += uint64(len(pkt))
 	}
 }
 
@@ -252,11 +259,6 @@ func (c *myconn) Read() {
 	pkt := make(packet.Packet, 65536)
 	cr := bufio.NewReader(c.conn)
 	for {
-		// if err := binary.Read(cr, binary.BigEndian, &pktLen); err != nil {
-		// 	log.Println("conn read fail:", err.Error())
-		// 	c.Close()
-		// 	break			
-		// }	
 		lenBuf, err := cr.Peek(2)
 		if err != nil {
 			log.Println("conn read fail:", err.Error())			
@@ -270,13 +272,18 @@ func (c *myconn) Read() {
 
 		rn, err := io.ReadFull(cr, pkt[:pktLen+2])
 		if err != nil {
-			log.Printf("ReadFull fail: %s, rn=%d, want=%d\n", err.Error(), rn, pktLen+2)
+			log.Println("ReadFull fail: %s, rn=%d, want=%d\n", err.Error(), rn, pktLen+2)
 			break
+		}
+
+		if *DebugEn {
+			ShowPktInfo(pkt[2:pktLen+2])
 		}
 
 		data := make([]byte, pktLen)
 		copy(data, pkt[2:pktLen+2])
-		c.FwdToPeer(data)		
+		c.FwdToPeer(data)
+		c.rx_bytes += uint64(rn)		
 	}
 }
 /*
@@ -396,14 +403,8 @@ func (c *myconn) WriteFromChan() {
 					log.Printf(" write len=%d, err=%s\n", len, err.Error())		
 					return
 				}
-				ether := packet.TranEther(pkt)
-				if *DebugEn && ether.IsIpPtk() {
-					iphdr, err := packet.ParseIPHeader(pkt[packet.EtherSize:])
-					if err != nil {
-						log.Println(err.Error())
-					}
-					fmt.Printf("pkt(len=%d) send to %s, ipheader:%s\n", c.conn.RemoteAddr().String(), iphdr.String())
-				}
+				c.tx_bytes += uint64(len)
+				
 			case q, ok := <-c.writeQuit:
 				if !ok {
 					log.Printf(" c.writeQuit is closed , quit the writefromchan  goroutine\n")		
