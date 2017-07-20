@@ -55,6 +55,8 @@ func fdbtick() {
 	}
 }
 func (f *FDB) Get(m packet.MAC) (I, bool) {
+	defer f.lock.RUnlock()
+	f.lock.RLock()
 	c, ok := f.mactable[m]
 	return c, ok
 }
