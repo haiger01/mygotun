@@ -80,7 +80,7 @@ func (c *Client) ReadForward() {
 			// 	break			
 			// }
 			lenBuf, err := cr.Peek(HeadSize)
-			if err != nil{
+			if err != nil {
 				log.Println("conn read fail:", err.Error())			
 				break
 			}		
@@ -90,7 +90,7 @@ func (c *Client) ReadForward() {
 				break
 			}
 			rn, err := io.ReadFull(cr, pkt[:pktLen+HeadSize])
-			if err != nil{
+			if err != nil {
 				log.Println("conn read fail:", err.Error())
 				break
 			}
@@ -107,7 +107,7 @@ func (c *Client) ReadForward() {
 	if _, ok := c.cio.(*mytun); ok {
 		for {
 			rn, err := cr.Read(pkt)
-			if err != nil{
+			if err != nil {
 				log.Println("conn read fail:", err.Error())			
 				break
 			}
