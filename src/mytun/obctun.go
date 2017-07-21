@@ -66,7 +66,7 @@ func cmdexec (cmds string, checkErr bool){
 	}
 }
 
-func ShowPktInfo(pkt []byte) {
+func ShowPktInfo(pkt []byte, ss string) {
 	if *tuntype == 1 {
 		ether := packet.TranEther(pkt)
 		if  ether.IsBroadcast() && ether.IsArp() {
@@ -80,19 +80,19 @@ func ShowPktInfo(pkt []byte) {
 			continue
 		}*/
 
-		if  ether.IsIpPtk() {
+		if ether.IsIpPtk() {
 			iphdr, err := packet.ParseIPHeader(pkt[packet.EtherSize:])
 			if err != nil {
-				log.Printf("ParseIPHeader err: %s\n", err.Error())
+				log.Printf("%s, ParseIPHeader err: %s\n", ss, err.Error())
 			}
-			fmt.Println("tun read: ", iphdr.String())
+			fmt.Printf("%s: %s\n", ss, iphdr.String())
 		}
 	} else {
 		iphdr, err := packet.ParseIPHeader(pkt)
 		if err != nil {
-			log.Printf("ParseIPHeader err: %s\n", err.Error())
+			log.Printf("%s,ParseIPHeader err: %s\n", ss, err.Error())
 		}
-		fmt.Println("tun read: ", iphdr.String())
+		fmt.Printf("%s: %s\n", ss, iphdr.String())
 	}			
 }
 
@@ -173,7 +173,7 @@ func (tun *mytun) Read() {
 		}
 
 		if *DebugEn {
-			ShowPktInfo(inpkt.Packet)
+			ShowPktInfo(inpkt.Packet, "tun read")
 		}
 
 		binary.BigEndian.PutUint16(data[:2], uint16(pktLen))
@@ -209,6 +209,9 @@ func (tun *mytun) WriteFromChan() {
 			log.Panicln(err)
 		}
 		tun.tx_bytes += uint64(len(pkt))
+		if *DebugEn {
+			log.Printf(" mytun  WriteFromChan tun.tx_bytes =%d \n", tun.tx_bytes)
+		}
 	}
 }
 
@@ -277,7 +280,7 @@ func (c *myconn) Read() {
 		}
 
 		if *DebugEn {
-			ShowPktInfo(pkt[2:pktLen+2])
+			ShowPktInfo(pkt[2:pktLen+2], "conn read")
 		}
 
 		data := make([]byte, pktLen)
@@ -404,7 +407,9 @@ func (c *myconn) WriteFromChan() {
 					return
 				}
 				c.tx_bytes += uint64(len)
-				
+				if *DebugEn {
+					log.Printf(" myconn  WriteFromChan c.tx_bytes =%d \n", c.tx_bytes)
+				}
 			case q, ok := <-c.writeQuit:
 				if !ok {
 					log.Printf(" c.writeQuit is closed , quit the writefromchan  goroutine\n")		
@@ -475,6 +480,27 @@ func bindPeer(a, b interface{}) bool{
 	return false
 }
 
+type Debug struct {
+	tun *mytun
+	cc *myconn
+}
+func (db *Debug) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	switch req.URL.Path {
+		case "/debug":
+			*DebugEn = true
+			log.Printf("set debug = true, *DebugEn=%v \n", *DebugEn)
+			fmt.Fprintf(w, "set debug = true, *DebugEn=%v \n", *DebugEn)
+		case "/nodebug":
+			*DebugEn = false
+			log.Printf("set debug = false, *DebugEn=%v \n", *DebugEn)
+			fmt.Fprintf(w, "set debug = false, *DebugEn=%v \n", *DebugEn)
+		case "/stat":
+			fmt.Fprintf(w, "db.tun:rx %d,tx %d bytes\n db.cc:rx %d,tx %d bytes \n", db.tun.rx_bytes, db.tun.tx_bytes, db.cc.rx_bytes, db.cc.tx_bytes)
+		default:
+			fmt.Fprintf(w, "%s\n", "set /debug or /nodebug , or /stat")
+	}
+}
+
 func main () {  
 	flag.Parse()
 	mylog.InitLog(mylog.LINFO)
@@ -489,8 +515,11 @@ func main () {
 			log.Println(http.ListenAndServe(*ppAddr, nil))
 		}()
 	}	
+	db := &Debug{}
+	go http.ListenAndServe("localhost:18181", db)
 
     tun := NewTun()
+	db.tun = tun
 	tun.Open()
 	go tun.WriteFromChan()
 	go tun.Read()
@@ -503,7 +532,8 @@ func main () {
 	}
 
 	for {
-		cc := NewConn() 	
+		cc := NewConn()
+		db.cc = cc 	
 		if ln != nil {
 			log.Printf("%s listenning .......\n", *lnAddr)
 			cc.conn, err = ln.Accept()
