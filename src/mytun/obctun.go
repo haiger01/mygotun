@@ -27,8 +27,8 @@ import (
 const (	
 	HBRequest = 0
 	HBReply = 1
-	HearBeatReq = "HearBeatReq" //len = 12
-	HearBeatRpl = "HearBeatRpl" //len = 12
+	HearBeatReq = "HeartBeatReq" //len = 12
+	HearBeatRpl = "HeartBeatRpl" //len = 12
 	HearBeatLen = 12
 	HBTimeout = 30 //second
 
@@ -293,13 +293,13 @@ func (c *myconn) Open() {
 
 func (c *myconn) checkHeartBeat(pkt []byte) bool {
 	if strings.Compare(string(pkt), HearBeatReq) == 0 {	
-		log.Println("recv a heartbeat request from %s\n", c.conn.RemoteAddr().String())
+		log.Println("recv a heartbeat request from ", c.conn.RemoteAddr().String())
 		//send heatbeat reply
 		c.sendHeartBeat(HBReply)
 		return true
 	}
 	if strings.Compare(string(pkt), HearBeatRpl) == 0 {
-		log.Println("recv a heartbeat reply from %s\n", c.conn.RemoteAddr().String())
+		log.Println("recv a heartbeat reply from ", c.conn.RemoteAddr().String())
 		c.rx_bytes += uint64(HearBeatLen)
 		//c.hbTimer.Reset(time.Second * time.Duration(HBTimeout))
 		return true	
@@ -333,7 +333,7 @@ func (c *myconn) Read() {
 		lenBuf, err := cr.Peek(2)	
 		if err != nil {
 			log.Println("conn read fail:", err.Error())			
-			//break
+			break
 		}
 
 		pktLen := int(binary.BigEndian.Uint16(lenBuf))
@@ -557,13 +557,13 @@ func (c *myconn) HeartBeat() {
 		<- c.hbTimer.C
 
 		if c.IsClose() {
-			log.Printf(" %s is closed, HeartBeat quit\n", c.conn.RemoteAddr().String())
+			log.Printf("==== %s is closed, HeartBeat quit ====\n", c.conn.RemoteAddr().String())
 			return
 		}
 
 		if rx == c.rx_bytes {
 			if timeout_count >= 3 {
-				log.Printf("HeartBeat quit:  timeout_count =%d, rx =%d, c.rx_bytes =%d\n", timeout_count, rx, c.rx_bytes)
+				log.Printf("=== HeartBeat quit:  timeout_count =%d, rx =%d, c.rx_bytes =%d =====\n", timeout_count, rx, c.rx_bytes)
 				return
 			}
 			//TODO send heartbeat requst packet
