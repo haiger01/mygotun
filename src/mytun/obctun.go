@@ -21,9 +21,22 @@ import (
 	"io"
 	"bufio"
 	"sync"
+	"strings"
+	"github.com/felixge/tcpkeepalive"
 )
+const (	
+	HBRequest = 0
+	HBReply = 1
+	HearBeatReq = "HearBeatReq" //len = 12
+	HearBeatRpl = "HearBeatRpl" //len = 12
+	HearBeatLen = 12
+	HBTimeout = 30 //second
 
-var (
+	KeepAliveIdle = 60
+	KeepAliveCnt = 3
+	KeepAliveIntv = 5	
+)
+var (		
 	buildTime string
 	br = flag.String("br", ""," add tun/tap to bridge")
 	tuntype = flag.Int("tuntype", int(tuntap.DevTap)," type, 1 means tap and 0 means tun")
@@ -122,7 +135,8 @@ type myconn struct {
 	peer myio
 	sync.Mutex
 	rx_bytes	uint64
-	tx_bytes	uint64	
+	tx_bytes	uint64
+	hbTimer		*time.Timer	
 }
 
 func NewTun() *mytun{
@@ -167,7 +181,7 @@ func (tun *mytun) Read() {
 		}
 
 		pktLen = len(inpkt.Packet)
-		if /*pktLen < 42 ||*/ pktLen > 1514 {
+		if pktLen < 28 || pktLen > 1514 {
 			log.Panicf("======tun read len=%d out of range =======\n", pktLen)
 			//continue
 		}
@@ -233,6 +247,7 @@ func (c *myconn) Open() {
 	n := 1
 	ReConnect:
 
+	log.Printf("now connecting to  %s \n", *server)
 	if *tlsEnable {
 		tlsconf := &tls.Config{
  			InsecureSkipVerify: true,
@@ -252,9 +267,44 @@ func (c *myconn) Open() {
 	
 	if tcpConn, ok := c.conn.(*net.TCPConn); ok {
 		tcpConn.SetNoDelay(true)
+
+		kaConn, err := tcpkeepalive.EnableKeepAlive(tcpConn)
+		if err != nil {
+			log.Println(c.conn.RemoteAddr(), err)
+		} else {
+			kaConn.SetKeepAliveIdle(time.Duration(KeepAliveIdle) * time.Second)
+			kaConn.SetKeepAliveCount(KeepAliveCnt)
+			kaConn.SetKeepAliveInterval(time.Duration(KeepAliveIntv) * time.Second)	
+		}
+		
+		/*
+		//tcpConn.SetKeepAlive(true)
+		err = tcpConn.SetKeepAlivePeriod(time.Second * 10)
+		if err != nil {
+			log.Println(c.conn.RemoteAddr(), "SetKeepAlivePeriod 10 second fail")
+		} else {
+			log.Println(c.conn.RemoteAddr(), "SetKeepAlivePeriod 10 second ok")
+		}
+		*/	
 	}
 
 	log.Println("success ,clinet:", c.conn.LocalAddr().String(),"connect to Server:", c.conn.RemoteAddr())
+}
+
+func (c *myconn) checkHeartBeat(pkt []byte) bool {
+	if strings.Compare(string(pkt), HearBeatReq) == 0 {	
+		log.Println("recv a heartbeat request from %s\n", c.conn.RemoteAddr().String())
+		//send heatbeat reply
+		c.sendHeartBeat(HBReply)
+		return true
+	}
+	if strings.Compare(string(pkt), HearBeatRpl) == 0 {
+		log.Println("recv a heartbeat reply from %s\n", c.conn.RemoteAddr().String())
+		c.rx_bytes += uint64(HearBeatLen)
+		//c.hbTimer.Reset(time.Second * time.Duration(HBTimeout))
+		return true	
+	}
+	return false
 }
 
 func (c *myconn) Read() {
@@ -262,14 +312,43 @@ func (c *myconn) Read() {
 	pkt := make(packet.Packet, 65536)
 	cr := bufio.NewReader(c.conn)
 	for {
-		lenBuf, err := cr.Peek(2)
+		// err := c.conn.SetReadDeadline(time.Now().Add(time.Second*10))
+		// if err != nil {
+		// 	log.Println("conn SetReadDeadline fail:", err.Error())			
+		// 	break
+		// }
+		// lenBuf, err := cr.Read(pkt[:2])
+		// if err != nil {
+		// 	// TODO : check read timout
+		// 	if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+		// 		log.Printf("timeout ?? err=%v\n", err)
+		// 		continue
+		// 	}
+		// 	log.Printf("%v\n", err)
+		// 	return
+		// }
+		// if err := c.conn.SetReadDeadline(time.Time{}); err != nil {
+		// 	return err
+		// }		
+		lenBuf, err := cr.Peek(2)	
 		if err != nil {
 			log.Println("conn read fail:", err.Error())			
-			break
+			//break
 		}
 
 		pktLen := int(binary.BigEndian.Uint16(lenBuf))
-		if /*pktLen < 42 ||*/ pktLen > 1514 {
+		if pktLen < 28 || pktLen > 1514 {
+			if pktLen == HearBeatLen {
+				rn, err := io.ReadFull(cr, pkt[:pktLen+2])
+				if err != nil {
+					log.Println("ReadFull fail: %s, rn=%d, want=%d\n", err.Error(), rn, pktLen+2)
+					break
+				}
+				
+				if c.checkHeartBeat(pkt[2:pktLen+2]) {
+					continue
+				}				
+			}
 			log.Panicf("parase pktLen=%d out of range \n", pktLen)			
 		}
 
@@ -392,6 +471,7 @@ func (c *myconn) PutPktToChan(pkt packet.Packet) {
 
 func (c *myconn) WriteFromChan() {
 	defer c.Close()
+
 	for {
 		select {
 			case pkt, ok := <- c.pktchan:
@@ -400,13 +480,19 @@ func (c *myconn) WriteFromChan() {
 						 c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
 					log.Printf(" c.pktchan is closed, quit the writefromchan  goroutine\n")		
 					return	
-				}	
-				len, err := c.conn.Write(pkt)
+				}
+
+				wn, err := c.conn.Write(pkt)
 				if err != nil{
-					log.Printf(" write len=%d, err=%s\n", len, err.Error())		
+					log.Printf(" write len=%d, err=%s\n", wn, err.Error())		
 					return
 				}
-				c.tx_bytes += uint64(len)
+
+				if wn != len(pkt) {
+					log.Panicf("len =%d, len(pkt)=%d \n", wn, len(pkt))
+				}				
+				c.tx_bytes += uint64(wn)
+
 				if *DebugEn {
 					log.Printf(" myconn  WriteFromChan c.tx_bytes =%d \n", c.tx_bytes)
 				}
@@ -418,11 +504,81 @@ func (c *myconn) WriteFromChan() {
 				}					
 				log.Printf("%s -> %s WriteFromChan quit \n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())				
 				return
+			// case <- time.After(time.Minute * 1):
+			// 	log.Printf(" time out, send obc heartbeat \n")				
+			// 	len, err := c.conn.Write(hb)
+			// 	if err != nil {
+			// 		log.Printf("HeartBeat fail: write len=%d, err=%s\n", len, err.Error())		
+			// 		return
+			// 	}
 		}
 	}
 }
+func (c *myconn) sendHeartBeat(hbType int) {
+	hb := make([]byte, HearBeatLen+2)
+	if hbType == HBRequest {
+		//request
+		if HearBeatLen != len(HearBeatReq) {
+			log.Panicf("HearBeatLen =%d, len(%s) =%d \n", HearBeatLen, HearBeatReq, len(HearBeatReq))
+		}		
+		copy(hb[2:], []byte(HearBeatReq))		
+	} else {
+		//reply
+		if HearBeatLen != len(HearBeatRpl) {
+			log.Panicf("HearBeatLen =%d, len(%s) =%d \n", HearBeatLen, HearBeatRpl, len(HearBeatRpl))
+		}
+		copy(hb[2:], []byte(HearBeatRpl))
+	}
+	binary.BigEndian.PutUint16(hb[:2], uint16(HearBeatLen))	
 
-func (c *myconn) Close() {	
+	c.conn.SetWriteDeadline(time.Now().Add(time.Second))
+	wn, err := c.conn.Write(hb)
+	if err != nil {
+		log.Printf("HeartBeat fail: write len=%d, err=%s\n", wn, err.Error())
+	} else {
+		log.Printf("HeartBeat write len=%d, \n", wn, )
+	}			
+	c.conn.SetWriteDeadline(time.Time{})
+}
+
+func (c *myconn) HeartBeat() {
+	timeout_count := 0	
+	c.hbTimer = time.NewTimer(time.Second * time.Duration(HBTimeout))
+	defer c.Reconnect()
+	defer c.hbTimer.Stop()
+	
+	for {
+		if c.IsClose() {
+			log.Printf(" %s is closed, HeartBeat quit\n", c.conn.RemoteAddr().String())
+			return
+		}
+		rx := c.rx_bytes
+		log.Printf("HeartBeat wait to timer up timeout_count =%d, c.rx_bytes=%d\n", timeout_count, c.rx_bytes)
+		<- c.hbTimer.C
+
+		if c.IsClose() {
+			log.Printf(" %s is closed, HeartBeat quit\n", c.conn.RemoteAddr().String())
+			return
+		}
+
+		if rx == c.rx_bytes {
+			if timeout_count >= 3 {
+				log.Printf("HeartBeat quit:  timeout_count =%d, rx =%d, c.rx_bytes =%d\n", timeout_count, rx, c.rx_bytes)
+				return
+			}
+			//TODO send heartbeat requst packet
+			c.sendHeartBeat(HBRequest)
+			c.hbTimer.Reset(time.Second * 5)
+			timeout_count++	
+		} else {
+			log.Printf("no need HeartBeat rx =%d, c.rx_bytes =%d", rx, c.rx_bytes)
+			c.hbTimer.Reset(time.Second * time.Duration(HBTimeout))
+			timeout_count = 0	
+		}		
+	}
+}
+
+func (c *myconn) Close() bool {	
 	c.Lock()
 	if !c.isClosed {
 		log.Printf("%s -> %s is  closing \n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
@@ -434,14 +590,16 @@ func (c *myconn) Close() {
 		close(c.pktchan)
 		close(c.writeQuit)
 		log.Printf("%s -> %s is  closed \n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
-		return
+		return true
 	}
 	c.Unlock()
+	return false
 }
 
 func (c *myconn) Reconnect() {
-	c.Close()
-	c.reconnect <- true
+	if c.Close() {
+		c.reconnect <- true
+	}	
 }
 
 func (c *myconn) IsClose() bool {
@@ -507,7 +665,7 @@ func main () {
 	var ln net.Listener
 	var err error
 	log.Printf("buildTime =%s\n", buildTime)
-	log.Printf("tun name =%s, br=%s server=%s, enable pprof %v, ppaddr=%s, chanSize=%d, lnAddr=%s \n", *tunname, *br,
+	log.Printf("tun name =%s, br=%s ,server=%s, enable pprof %v, ppaddr=%s, chanSize=%d, lnAddr=%s \n", *tunname, *br,
 					 *server, *pprofEnable, *ppAddr, *chanSize, *lnAddr)
 
 	if *pprofEnable {
@@ -549,6 +707,7 @@ func main () {
 		bind(cc, tun)
 		go cc.WriteFromChan()
 		go cc.Read()
+		go cc.HeartBeat()
 		<-cc.reconnect
 		close(cc.reconnect)
 		time.Sleep(time.Millisecond * 100)
