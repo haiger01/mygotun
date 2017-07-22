@@ -516,18 +516,21 @@ func (c *myconn) WriteFromChan() {
 }
 func (c *myconn) sendHeartBeat(hbType int) {
 	hb := make([]byte, HearBeatLen+2)
+	var sendstring  string
 	if hbType == HBRequest {
 		//request
 		if HearBeatLen != len(HearBeatReq) {
 			log.Panicf("HearBeatLen =%d, len(%s) =%d \n", HearBeatLen, HearBeatReq, len(HearBeatReq))
 		}		
-		copy(hb[2:], []byte(HearBeatReq))		
+		copy(hb[2:], []byte(HearBeatReq))
+		sendstring = "request"		
 	} else {
 		//reply
 		if HearBeatLen != len(HearBeatRpl) {
 			log.Panicf("HearBeatLen =%d, len(%s) =%d \n", HearBeatLen, HearBeatRpl, len(HearBeatRpl))
 		}
 		copy(hb[2:], []byte(HearBeatRpl))
+		sendstring = "replay"	
 	}
 	binary.BigEndian.PutUint16(hb[:2], uint16(HearBeatLen))	
 
@@ -536,7 +539,7 @@ func (c *myconn) sendHeartBeat(hbType int) {
 	if err != nil {
 		log.Printf("HeartBeat fail: write len=%d, err=%s\n", wn, err.Error())
 	} else {
-		log.Printf("HeartBeat write len=%d, \n", wn, )
+		log.Printf("HeartBeat write  %s len=%d,\n", sendstring, wn)
 	}			
 	c.conn.SetWriteDeadline(time.Time{})
 }
@@ -682,22 +685,21 @@ func main () {
 	go tun.WriteFromChan()
 	go tun.Read()
 
-	if *lnAddr != "" {
-		ln, err = net.Listen("tcp4", *lnAddr)
-		if err != nil {
-			log.Fatalln(err)
-		}	
-	}
-
 	for {
 		cc := NewConn()
 		db.cc = cc 	
-		if ln != nil {
-			log.Printf("%s listenning .......\n", *lnAddr)
+		if *lnAddr != "" {
+			ln, err = net.Listen("tcp4", *lnAddr)
+			if err != nil {
+				log.Fatalln(err)
+			}	
+			log.Printf("\n %s listenning .......\n", *lnAddr)
 			cc.conn, err = ln.Accept()
 			if err != nil {
 				log.Fatalln(err)
 			}
+			ln.Close()
+
 			cc.conn.(*net.TCPConn).SetNoDelay(true)			
 			log.Printf("new connect :%s ->  %s\n", cc.conn.RemoteAddr().String(), cc.conn.LocalAddr().String())
 		} else {
