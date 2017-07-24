@@ -254,13 +254,13 @@ func (c *myconn) Open() {
  		}
  		c.conn, err  = tls.Dial("tcp", *server, tlsconf)
 	}else {
-		c.conn, err = net.Dial("tcp4", *server)		
+		//c.conn, err = net.Dial("tcp4", *server)
+		c.conn, err = net.DialTimeout("tcp4", *server, time.Second * 5)			
 	}
 
 	if err != nil {
-		log.Printf("try to connect to  %s time =%d\n", *server, n)
+		log.Printf("try to connect to  %s time =%d, err=%s\n", *server, n, err.Error())
 		n += 1
-		fmt.Println(err.Error())
 		time.Sleep(time.Second * 2)
 		goto ReConnect
 	}
@@ -570,11 +570,12 @@ func (c *myconn) HeartBeat() {
 				return
 			}
 			//TODO send heartbeat requst packet
+			log.Printf("need to send HeartBeat request, rx =%d, c.rx_bytes =%d\n", rx, c.rx_bytes)
 			c.sendHeartBeat(HBRequest)
 			c.hbTimer.Reset(time.Second * 5)
 			timeout_count++	
 		} else {
-			log.Printf("no need HeartBeat rx =%d, c.rx_bytes =%d", rx, c.rx_bytes)
+			log.Printf("no need to send HeartBeat rx =%d, c.rx_bytes =%d", rx, c.rx_bytes)
 			c.hbTimer.Reset(time.Second * time.Duration(HBTimeout))
 			timeout_count = 0	
 		}		
