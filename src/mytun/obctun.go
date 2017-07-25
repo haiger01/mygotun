@@ -570,12 +570,12 @@ func (c *myconn) HeartBeat() {
 				return
 			}
 			//TODO send heartbeat requst packet
-			log.Printf("need to send HeartBeat request, rx =%d, c.rx_bytes =%d\n", rx, c.rx_bytes)
+			log.Printf("%d Second timeout, need to send HeartBeat request, rx =%d, c.rx_bytes =%d\n", HBTimeout, rx, c.rx_bytes)
 			c.sendHeartBeat(HBRequest)
 			c.hbTimer.Reset(time.Second * 5)
 			timeout_count++	
 		} else {
-			log.Printf("no need to send HeartBeat rx =%d, c.rx_bytes =%d", rx, c.rx_bytes)
+			log.Printf("have received some pkt, no need to send HeartBeat rx =%d, c.rx_bytes =%d", rx, c.rx_bytes)
 			c.hbTimer.Reset(time.Second * time.Duration(HBTimeout))
 			timeout_count = 0	
 		}		
