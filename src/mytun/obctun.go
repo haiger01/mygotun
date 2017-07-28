@@ -30,7 +30,7 @@ const (
 	HearBeatReq = "HeartBeatReq" //len = 12
 	HearBeatRpl = "HeartBeatRpl" //len = 12
 	HearBeatLen = 12
-	HBTimeout = 30 //second
+	HBTimeout = 90 //second
 
 	KeepAliveIdle = 60
 	KeepAliveCnt = 3
