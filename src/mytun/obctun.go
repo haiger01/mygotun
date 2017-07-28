@@ -265,7 +265,7 @@ func  NewConn() *myconn{
 	}
 }
 
-func (c *myconn) Open() {
+func (c *myconn) Connecting() {
 	var err error
 	n := 1
 	ReConnect:
@@ -291,9 +291,34 @@ func (c *myconn) Open() {
 	log.Println("success ,clinet:", c.conn.LocalAddr().String(),"connect to Server:", c.conn.RemoteAddr())
 }
 
+func (c *myconn) Listenning() {
+	ln, err := net.Listen("tcp4", *lnAddr)
+	if err != nil {
+		log.Fatalln(err)
+	}	
+	log.Printf("\n %s listenning .......\n", *lnAddr)
+	c.conn, err = ln.Accept()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	ln.Close()
+				
+	log.Printf("new connect :%s ->  %s\n", c.conn.RemoteAddr().String(), c.conn.LocalAddr().String())
+}
+
+func (c *myconn) Open() {
+	if *lnAddr != "" {
+		c.Listenning()
+	} else {
+		c.Connecting()
+	}
+	c.setTcpSockOpt()
+}
+
 func (c *myconn) setTcpSockOpt() {
 	if tcpConn, ok := c.conn.(*net.TCPConn); ok {
 		tcpConn.SetNoDelay(true)
+		
 		if err := setTCPUserTimeout(tcpConn, time.Second * TcpUserTimeout); err != nil {
 			log.Printf("setTCPUserTimeout fail, err=%s\n", err.Error())
 		}
@@ -686,8 +711,7 @@ func (db *Debug) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 func main () {  
 	flag.Parse()
 	mylog.InitLog(mylog.LINFO)
-	var ln net.Listener
-	var err error
+
 	log.Printf("buildTime =%s\n", buildTime)
 	log.Printf("tun name =%s, br=%s ,server=%s, enable pprof %v, ppaddr=%s, chanSize=%d, lnAddr=%s \n", *tunname, *br,
 					 *server, *pprofEnable, *ppAddr, *chanSize, *lnAddr)
@@ -709,25 +733,8 @@ func main () {
 	for {
 		cc := NewConn()
 		db.cc = cc 	
-		if *lnAddr != "" {
-			ln, err = net.Listen("tcp4", *lnAddr)
-			if err != nil {
-				log.Fatalln(err)
-			}	
-			log.Printf("\n %s listenning .......\n", *lnAddr)
-			cc.conn, err = ln.Accept()
-			if err != nil {
-				log.Fatalln(err)
-			}
-			ln.Close()
-
-			cc.conn.(*net.TCPConn).SetNoDelay(true)			
-			log.Printf("new connect :%s ->  %s\n", cc.conn.RemoteAddr().String(), cc.conn.LocalAddr().String())
-		} else {
-			cc.Open()
-		}	
-		cc.setTcpSockOpt()
-
+		cc.Open()	
+		
 		bind(cc, tun)
 		go cc.WriteFromChan()
 		go cc.Read()
