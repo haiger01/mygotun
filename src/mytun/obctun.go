@@ -23,7 +23,29 @@ import (
 	"sync"
 	"strings"
 	"github.com/felixge/tcpkeepalive"
+	"os"
+	"syscall"
 )
+
+// setTCPUserTimeout sets TCP_USER_TIMEOUT according to RFC5842
+func setTCPUserTimeout(conn *net.TCPConn, uto time.Duration) error {
+	f, err := conn.File()
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	msecs := int(uto.Nanoseconds() / 1e6)
+	// TCP_USER_TIMEOUT is a relatively new feature to detect dead peer from sender side.
+	// Linux supports it since kernel 2.6.37. It's among Golang experimental under
+	// golang.org/x/sys/unix but it doesn't support all Linux platforms yet.
+	// we explicitly define it here until it becomes official in golang.
+	// TODO: replace it with proper package when TCP_USER_TIMEOUT is supported in golang.
+	const tcpUserTimeout = 0x12
+	log.Printf("setTCPUserTimeout msecs =%d \n", msecs)
+	return os.NewSyscallError("setsockopt", syscall.SetsockoptInt(int(f.Fd()), syscall.IPPROTO_TCP, tcpUserTimeout, msecs))
+}
+
 const (	
 	HBRequest = 0
 	HBReply = 1
@@ -31,6 +53,7 @@ const (
 	HearBeatRpl = "HeartBeatRpl" //len = 12
 	HearBeatLen = 12
 	HBTimeout = 90 //second
+	TcpUserTimeout = 3 //second
 
 	KeepAliveIdle = 60
 	KeepAliveCnt = 3
@@ -264,9 +287,16 @@ func (c *myconn) Open() {
 		time.Sleep(time.Second * 2)
 		goto ReConnect
 	}
-	
+
+	log.Println("success ,clinet:", c.conn.LocalAddr().String(),"connect to Server:", c.conn.RemoteAddr())
+}
+
+func (c *myconn) setTcpSockOpt() {
 	if tcpConn, ok := c.conn.(*net.TCPConn); ok {
 		tcpConn.SetNoDelay(true)
+		if err := setTCPUserTimeout(tcpConn, time.Second * TcpUserTimeout); err != nil {
+			log.Printf("setTCPUserTimeout fail, err=%s\n", err.Error())
+		}
 
 		kaConn, err := tcpkeepalive.EnableKeepAlive(tcpConn)
 		if err != nil {
@@ -275,20 +305,10 @@ func (c *myconn) Open() {
 			kaConn.SetKeepAliveIdle(time.Duration(KeepAliveIdle) * time.Second)
 			kaConn.SetKeepAliveCount(KeepAliveCnt)
 			kaConn.SetKeepAliveInterval(time.Duration(KeepAliveIntv) * time.Second)	
-		}
-		
-		/*
-		//tcpConn.SetKeepAlive(true)
-		err = tcpConn.SetKeepAlivePeriod(time.Second * 10)
-		if err != nil {
-			log.Println(c.conn.RemoteAddr(), "SetKeepAlivePeriod 10 second fail")
-		} else {
-			log.Println(c.conn.RemoteAddr(), "SetKeepAlivePeriod 10 second ok")
-		}
-		*/	
+		}	
+	} else {
+		log.Printf("setTcpSockOpt fail: %s isn't a tcp connect \n", c.conn.RemoteAddr().String())
 	}
-
-	log.Println("success ,clinet:", c.conn.LocalAddr().String(),"connect to Server:", c.conn.RemoteAddr())
 }
 
 func (c *myconn) isHeartBeat(pkt []byte) bool {
@@ -706,7 +726,8 @@ func main () {
 		} else {
 			cc.Open()
 		}	
-		
+		cc.setTcpSockOpt()
+
 		bind(cc, tun)
 		go cc.WriteFromChan()
 		go cc.Read()
