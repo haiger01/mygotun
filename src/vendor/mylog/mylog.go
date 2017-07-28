@@ -60,7 +60,7 @@ func InitLog(log_level int) {
 		if err != nil {
 			log.Fatalln("open log file error: ", err)
 		}
-		//redirectStderr(lf)
+		redirectStderr(lf)
 		log.SetOutput(lf)
 	}
 }
@@ -69,6 +69,10 @@ func Close() {
 	if lf != nil {
 		lf.Close()
 	}
+}
+
+func init() {
+	
 }
 
 func Debug(format string, a ...interface{}){
