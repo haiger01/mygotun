@@ -291,10 +291,10 @@ func (c *myconn) Open() {
 	log.Println("success ,clinet:", c.conn.LocalAddr().String(),"connect to Server:", c.conn.RemoteAddr())
 }
 
-func (c *myconn) checkHeartBeat(pkt []byte) bool {
+func (c *myconn) isHeartBeat(pkt []byte) bool {
 	if strings.Compare(string(pkt), HearBeatReq) == 0 {	
 		log.Println("recv a heartbeat request from ", c.conn.RemoteAddr().String())
-		//send heatbeat reply
+		//send heartbeat reply
 		c.sendHeartBeat(HBReply)
 		return true
 	}
@@ -345,7 +345,7 @@ func (c *myconn) Read() {
 					break
 				}
 				
-				if c.checkHeartBeat(pkt[2:pktLen+2]) {
+				if c.isHeartBeat(pkt[2:pktLen+2]) {
 					continue
 				}				
 			}
