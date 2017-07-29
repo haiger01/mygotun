@@ -229,7 +229,7 @@ func (tun *mytun) GetPeer() myio {
 }
 
 func (tun *mytun) FwdToPeer(pkt packet.Packet) {
-	if tun.peer != nil && !tun.peer.IsClose() {
+	if tun.peer != nil {
 		tun.peer.PutPktToChan(pkt)
 	}	
 }
@@ -511,7 +511,9 @@ func (c *myconn) FwdToPeer(pkt packet.Packet) {
 }
 
 func (c *myconn) PutPktToChan(pkt packet.Packet) {
-	c.pktchan <- pkt
+	if !c.IsClose() {
+		c.pktchan <- pkt
+	}	
 }
 
 func (c *myconn) WriteFromChan() {
@@ -577,16 +579,18 @@ func (c *myconn) sendHeartBeat(hbType int) {
 		copy(hb[2:], []byte(HearBeatRpl))
 		sendstring = "replay"	
 	}
-	binary.BigEndian.PutUint16(hb[:2], uint16(HearBeatLen))	
+	binary.BigEndian.PutUint16(hb[:2], uint16(HearBeatLen))
 
-	c.conn.SetWriteDeadline(time.Now().Add(time.Second))
-	wn, err := c.conn.Write(hb)
-	if err != nil {
-		log.Printf("HeartBeat fail: write len=%d, err=%s\n", wn, err.Error())
-	} else {
-		log.Printf("HeartBeat write  %s len=%d,\n", sendstring, wn)
-	}			
-	c.conn.SetWriteDeadline(time.Time{})
+	c.PutPktToChan(hb)
+	log.Printf("sending HeartBeat  %s \n", sendstring)
+	// c.conn.SetWriteDeadline(time.Now().Add(time.Second))
+	// wn, err := c.conn.Write(hb)
+	// if err != nil {
+	// 	log.Printf("HeartBeat fail: write len=%d, err=%s\n", wn, err.Error())
+	// } else {
+	// 	log.Printf("HeartBeat write  %s len=%d,\n", sendstring, wn)
+	// }			
+	// c.conn.SetWriteDeadline(time.Time{})
 }
 
 func (c *myconn) HeartBeat() {
