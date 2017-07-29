@@ -633,6 +633,7 @@ func (c *myconn) Close() bool {
 		log.Printf("%s -> %s is  closing \n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
 		c.isClosed = true
 		c.Unlock()
+		c.hbTimer.Reset(time.Millisecond * 10)// for heartbeat goroutine quit quickly
 		c.conn.Close()		
 		c.writeQuit <- true
 		time.Sleep(time.Millisecond * 10)
