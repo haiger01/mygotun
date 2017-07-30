@@ -511,6 +511,8 @@ func (c *myconn) FwdToPeer(pkt packet.Packet) {
 }
 
 func (c *myconn) PutPktToChan(pkt packet.Packet) {
+	// if c.pktchan is closed, it will be panic, 
+	//so use !c.IsClose() to make sure c.pktchan is no closed
 	if !c.IsClose() {
 		c.pktchan <- pkt
 	}	
