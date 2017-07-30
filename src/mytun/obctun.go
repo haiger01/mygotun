@@ -25,6 +25,7 @@ import (
 	"github.com/felixge/tcpkeepalive"
 	"os"
 	"syscall"
+	"github.com/juju/ratelimit"
 )
 
 // setTCPUserTimeout sets TCP_USER_TIMEOUT according to RFC5842
@@ -72,6 +73,8 @@ var (
 	lnAddr = flag.String("lnAddr",""," server like 203.156.34.98:7878")
 	DebugEn = flag.Bool("DebugEn", false, "debug, show ip packet information")
 	ipstr = flag.String("ipstr", "", "set tun/tap or br ip address")
+	UpRateLimit = flag.Int64("uprate", 0, "UpRateLimit, 0 means no limit")
+	DownRateLimit = flag.Int64("downrate", 0, "DownRateLimit, 0 means no limit")
 )
 /*
 go tool pprof http://localhost:7070/debug/pprof/heap
@@ -355,7 +358,14 @@ func (c *myconn) isHeartBeat(pkt []byte) bool {
 func (c *myconn) Read() {
 	defer c.Reconnect()
 	pkt := make(packet.Packet, 65536)
-	cr := bufio.NewReader(c.conn)
+	var cr *bufio.Reader
+	if *DownRateLimit != 0 {
+		bk := ratelimit.NewBucketWithRate(float64(*DownRateLimit), int64(*DownRateLimit))
+		rd := ratelimit.Reader(c.conn, bk)
+		cr = bufio.NewReader(rd)
+	} else {
+		cr = bufio.NewReader(c.conn)
+	}	
 	for {
 		// err := c.conn.SetReadDeadline(time.Now().Add(time.Second*10))
 		// if err != nil {
@@ -520,7 +530,14 @@ func (c *myconn) PutPktToChan(pkt packet.Packet) {
 
 func (c *myconn) WriteFromChan() {
 	defer c.Close()
-
+	var wd io.Writer
+	if *UpRateLimit != 0 {
+		bk := ratelimit.NewBucketWithRate(float64(*UpRateLimit), int64(*UpRateLimit))
+		wd = ratelimit.Writer(c.conn, bk)
+	} else {
+		wd = c.conn
+	}	
+	
 	for {
 		select {
 			case pkt, ok := <- c.pktchan:
@@ -531,7 +548,8 @@ func (c *myconn) WriteFromChan() {
 					return	
 				}
 
-				wn, err := c.conn.Write(pkt)
+				//wn, err := c.conn.Write(pkt)
+				wn, err := wd.Write(pkt)
 				if err != nil{
 					log.Printf(" write len=%d, err=%s\n", wn, err.Error())		
 					return
