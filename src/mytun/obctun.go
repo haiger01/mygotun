@@ -609,7 +609,7 @@ func (c *myconn) sendHeartBeat(hbType int) {
 	c.PutPktToChan(hb)
 	log.Printf("sending HeartBeat  %s \n", sendstring)
 	// c.conn.SetWriteDeadline(time.Now().Add(time.Second))
-	// wn, err := c.conn.Write(hb)
+	// wn, err := c.conn.Write(hb) //here is ok, "Multiple goroutines may invoke methods on a Conn simultaneously."
 	// if err != nil {
 	// 	log.Printf("HeartBeat fail: write len=%d, err=%s\n", wn, err.Error())
 	// } else {
