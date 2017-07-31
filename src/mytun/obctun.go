@@ -189,6 +189,7 @@ func (tun *mytun) Open() {
 	} else if *ipstr != "" {
 		confs += fmt.Sprintf("ifconfig %s %s\n", *tunname, *ipstr)
 	}
+	confs += fmt.Sprintf("ifconfig %s txqueuelen 5000\n", *tunname)
 	err = exec.Command("sh","-c", confs).Run()
 	if err != nil {
 		log.Printf("open err:%s, confs = %s \n", err.Error(), confs)
