@@ -65,7 +65,7 @@ var (
 	br = flag.String("br", ""," add tun/tap to bridge")
 	tuntype = flag.Int("tuntype", int(tuntap.DevTap)," type, 1 means tap and 0 means tun")
 	tunname = flag.String("tundev","tap0"," tun dev name")
-	server = flag.String("server",":7878"," server like 203.156.34.98:7878")
+	server = flag.String("server","127.0.0.1:7878"," server like 203.156.34.98:7878")
 	tlsEnable = flag.Bool("tls", false, "enable tls connect")
 	pprofEnable = flag.Bool("pprof", false, "enable pprof, true or false")
 	ppAddr = flag.String("ppaddr", ":7070", "ppaddr , http://xxxx:7070/debug/pprof/")
