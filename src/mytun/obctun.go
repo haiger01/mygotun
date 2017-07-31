@@ -571,7 +571,7 @@ func (c *myconn) WriteFromChan() {
 					log.Printf("chan write_quit recive message: quit=%v, ok=%v\n", q, ok)	
 				}					
 				log.Printf("%s -> %s WriteFromChan quit \n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())				
-				return
+				return				
 			// case <- time.After(time.Minute * 1):
 			// 	log.Printf(" time out, send obc heartbeat \n")				
 			// 	len, err := c.conn.Write(hb)
@@ -579,6 +579,10 @@ func (c *myconn) WriteFromChan() {
 			// 		log.Printf("HeartBeat fail: write len=%d, err=%s\n", len, err.Error())		
 			// 		return
 			// 	}
+			/*
+				time.After释放的问题,当pktchan有很多数据时,会重新注册很多个timer,而且这些timer需要1分钟后才会被回收
+				，这样会累积很多timer, 耗内存
+			*/
 		}
 	}
 }
