@@ -602,12 +602,12 @@ func (c *myconn) sendHeartBeat(hbType int) {
 			log.Panicf("HearBeatLen =%d, len(%s) =%d \n", HearBeatLen, HearBeatRpl, len(HearBeatRpl))
 		}
 		copy(hb[2:], []byte(HearBeatRpl))
-		sendstring = "replay"	
+		sendstring = "reply"	
 	}
 	binary.BigEndian.PutUint16(hb[:2], uint16(HearBeatLen))
 
 	c.PutPktToChan(hb)
-	log.Printf("sending HeartBeat  %s \n", sendstring)
+	log.Printf("sending HeartBeat  %s to %s\n", sendstring, c.conn.RemoteAddr().String())
 	// c.conn.SetWriteDeadline(time.Now().Add(time.Second))
 	// wn, err := c.conn.Write(hb) //here is ok, "Multiple goroutines may invoke methods on a Conn simultaneously."
 	// if err != nil {
