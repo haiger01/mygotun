@@ -62,6 +62,10 @@ const (
 )
 var (		
 	buildTime string
+	goVersion string
+	commitId string	
+	appVersion = "1.0.0"	
+	version = flag.Bool("v", true, "show version information")
 	br = flag.String("br", ""," add tun/tap to bridge")
 	tuntype = flag.Int("tuntype", int(tuntap.DevTap)," type, 1 means tap and 0 means tun")
 	tunname = flag.String("tundev","tap0"," tun dev name")
@@ -742,7 +746,10 @@ func main () {
 	flag.Parse()
 	mylog.InitLog(mylog.LINFO)
 
-	log.Printf("buildTime =%s\n", buildTime)
+	if *version {
+		log.Printf("appVersion=%s, goVersion=%s, buildTime=%s, commitId=%s\n", appVersion, goVersion, buildTime, commitId)
+	}
+	
 	log.Printf("tun name =%s, br=%s ,server=%s, enable pprof %v, ppaddr=%s, chanSize=%d, lnAddr=%s \n", *tunname, *br,
 					 *server, *pprofEnable, *ppAddr, *chanSize, *lnAddr)
 
