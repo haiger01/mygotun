@@ -22,6 +22,7 @@ openssl req -new -x509 -key server.key -out server.pem -days3650
 var (
 	config Vl2Config
 	buildTime string
+	goVersion string
 	commitId string
 	appVersion = "1.0.0"
 	version = flag.Bool("v", true, "show version information")
@@ -111,7 +112,7 @@ func initConfig(config *Vl2Config) {
 	}
 
 	if config.Version {
-		log.Printf("appVersion=%s, buildTime=%s, commitId=%s\n", appVersion, buildTime, commitId)
+		log.Printf("appVersion=%s, goVersion=%s, buildTime=%s, commitId=%s\n", appVersion, goVersion, buildTime, commitId)
 	}
 	log.Printf("listenAddr=%s, httpAddr =%s for check clientmac, serAddr=%s, tlsEnable =%v, br=%s, tundev=%s\n", 
 				config.ListenAddr, config.HttpAddr, config.SerAddr, config.TlsEnable, config.Br, config.Tundev)	

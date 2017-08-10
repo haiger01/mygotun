@@ -12,12 +12,12 @@ if [ x$arch = x"" ]; then
 fi
 
 GOOS=$os GOARCH=$arch go build -o bin/l2t-server${os}${arch} -ldflags \
-"-extldflags '-static' -X main.buildTime=`date +%Y%m%d/%H:%M:%S` -X main.commitId=`git rev-parse HEAD`" \
+"-extldflags '-static' -X main.goVersion=`go version|awk '{printf $3}'` -X main.buildTime=`date +%Y%m%d/%H:%M:%S` -X main.commitId=`git rev-parse HEAD`" \
 src/mytun/vl2Server.go
 
 GOOS=$os GOARCH=$arch go build -o bin/l2t-tun${os}${arch} -ldflags \
-"-extldflags '-static' -X main.buildTime=`date +%Y%m%d/%H:%M:%S` -X main.commitId=`git rev-parse HEAD`" \
+"-extldflags '-static' -X main.goVersion=`go version|awk '{printf $3}'` -X main.buildTime=`date +%Y%m%d/%H:%M:%S` -X main.commitId=`git rev-parse HEAD`" \
 src/mytun/mytun.go
 
 GOOS=linux GOARCH=arm go build -o bin/l2t-tun-arm -ldflags \
-"-extldflags '-static' -X main.buildTime=`date +%Y%m%d/%H:%M:%S`  -X main.commitId=`git rev-parse HEAD`" src/mytun/mytun.go
+"-extldflags '-static' -X main.goVersion=`go version|awk '{printf $3}'` -X main.buildTime=`date +%Y%m%d/%H:%M:%S`  -X main.commitId=`git rev-parse HEAD`" src/mytun/mytun.go
