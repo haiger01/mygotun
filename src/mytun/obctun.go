@@ -71,10 +71,12 @@ var (
 	tunname = flag.String("tundev","tap0"," tun dev name")
 	server = flag.String("server","127.0.0.1:7878"," server like 203.156.34.98:7878")
 	tlsEnable = flag.Bool("tls", false, "enable tls connect")
+	tlsSK = flag.String("server.key", "./config/server.key", "tls server.key")
+	tlsSP = flag.String("server.pem", "./config/server.pem", "tls server.pem")
 	pprofEnable = flag.Bool("pprof", false, "enable pprof, true or false")
 	ppAddr = flag.String("ppaddr", ":7070", "ppaddr , http://xxxx:7070/debug/pprof/")
 	chanSize = flag.Int("chanSize", 4096, "chan Size")
-	lnAddr = flag.String("lnAddr",""," server like 203.156.34.98:7878")
+	lnAddr = flag.String("lnAddr",""," listen addr, like 203.156.34.98:7878")
 	DebugEn = flag.Bool("DebugEn", false, "debug, show ip packet information")
 	ipstr = flag.String("ipstr", "", "set tun/tap or br ip address")
 	UpRateLimit = flag.Int64("uprate", 0, "UpRateLimit, 0 means no limit")
@@ -300,7 +302,21 @@ func (c *myconn) Connecting() {
 }
 
 func (c *myconn) Listenning() {
-	ln, err := net.Listen("tcp4", *lnAddr)
+	var ln net.Listener
+	var err error
+	if *tlsEnable {
+		cert, err := tls.LoadX509KeyPair(*tlsSP, *tlsSK)
+		if err != nil {
+			log.Fatalln(err, *tlsSP, *tlsSK)
+ 		}
+		tlsconf := &tls.Config {
+			Certificates: []tls.Certificate{cert},
+		}
+		ln, err = tls.Listen("tcp4", *lnAddr, tlsconf)		
+	}else {
+		ln, err = net.Listen("tcp4", *lnAddr)
+	}
+	//ln, err := net.Listen("tcp4", *lnAddr)
 	if err != nil {
 		log.Fatalln(err)
 	}	
@@ -362,7 +378,7 @@ func (c *myconn) isHeartBeat(pkt []byte) bool {
 
 func (c *myconn) Read() {
 	defer c.Reconnect()
-	pkt := make(packet.Packet, 65536)
+	pkt := make(packet.Packet, 2048)
 	var cr *bufio.Reader
 	if *DownRateLimit != 0 {
 		bk := ratelimit.NewBucketWithRate(float64(*DownRateLimit), int64(*DownRateLimit))
