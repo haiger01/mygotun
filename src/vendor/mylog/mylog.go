@@ -17,15 +17,15 @@ var logFile = flag.String("log.file", "", "save log file path")
 var logNum = flag.Int("log.num", 20000, " the loginfo number of log file")
 
 const (
-	LDEBUG = iota
-	LINFO  //1
+	LOG_DEPTH = 3
+	LDEBUG    = iota
+	LINFO     //1
 	LNOTICE
 	LWARNING
 	LERROR
 )
 
 var loglevel int
-var depth int = 2
 var MyLogInfoNum uint64 = 0
 var LogInfoThreshold uint64 = 0
 var logLock sync.Mutex
@@ -107,7 +107,7 @@ func NewLogFile() {
 func putToLog(level int, pre string, format string, a ...interface{}) {
 	if loglevel <= level {
 		pre_str := fmt.Sprintf("[%s %d] ", pre, MyLogInfoNum)
-		log.Output(depth, fmt.Sprintf(pre_str+format, a...))
+		log.Output(LOG_DEPTH, fmt.Sprintf(pre_str+format, a...))
 		atomic.AddUint64(&MyLogInfoNum, 1)
 		if MyLogInfoNum > LogInfoThreshold {
 			NewLogFile()
