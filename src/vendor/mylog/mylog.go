@@ -15,6 +15,7 @@ import (
 
 var logFile = flag.String("log.file", "", "save log file path")
 var logNum = flag.Int("log.num", 20000, " the loginfo number of log file")
+var logFileNum = flag.Int("log.filenum", 10, " the max num of log file to save")
 
 const (
 	LOG_DEPTH = 3
@@ -29,6 +30,8 @@ var loglevel int
 var MyLogInfoNum uint64 = 0
 var LogInfoThreshold uint64 = 0
 var logLock sync.Mutex
+var logFileChan chan string
+var logFileFlag bool //false means don't create log
 
 var lf *os.File
 
@@ -47,6 +50,8 @@ func fileExist(filename string) bool {
 func InitLog(log_level int) {
 	loglevel = log_level
 	LogInfoThreshold = uint64(*logNum)
+	logFileChan = make(chan string, *logFileNum)
+	logFileFlag = false
 	createLogFile()
 }
 
@@ -66,8 +71,9 @@ func createLogFile() {
 	var err error
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 	if logfile != "" {
-		if fileExist(logfile) {
-			log.Printf("log file %s already exist\n", logfile)
+		//if fileExist(logfile)
+		{
+			//log.Printf("log file %s already exist\n", logfile)
 			//t := time.Now().Format(layout)
 			t := time.Now()
 			year, month, day := t.Date()
@@ -84,24 +90,43 @@ func createLogFile() {
 		if err != nil {
 			log.Fatalln("open log file error: ", err)
 		}
+		if len(logFileChan) >= *logFileNum {
+			log.Printf("len(logFileChan):%d, max log file num is %d, need to del the oldest log file\n", len(logFileChan), *logFileNum)
+			oldestFile := <-logFileChan
+			if err := os.Remove(oldestFile); err != nil {
+				log.Printf("fail, del the oldest file:%s, err:%s\n", oldestFile, err.Error())
+			} else {
+				log.Printf("success, del the oldest file:%s\n", oldestFile)
+			}
+		}
+
+		logFileChan <- logfile
+		log.Printf("save log file:%s to chan ok\n", logfile)
 
 		log.Printf("create log file  %s success, now set log output to the file\n", logfile)
 		redirectStderr(lf)
 		log.SetOutput(lf)
+
+		logFileFlag = true
 	}
 }
 
 func NewLogFile() {
 	logLock.Lock()
 	//atomic.LoadUint64(&MyLogInfoNum)
-	if MyLogInfoNum <= LogInfoThreshold {
+	// if MyLogInfoNum <= LogInfoThreshold {
+	// 	logLock.Unlock()
+	// 	return
+	// }
+	LogInfoThreshold += uint64(*logNum)
+	if logFileFlag == false {
 		logLock.Unlock()
 		return
 	}
-	LogInfoThreshold += uint64(*logNum)
+	logFileFlag = false
 	logLock.Unlock()
 
-	createLogFile()
+	go createLogFile()
 }
 
 func putToLog(level int, pre string, format string, a ...interface{}) {
