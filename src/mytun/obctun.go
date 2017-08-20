@@ -198,10 +198,10 @@ func (tun *mytun) Open() {
 	confs += fmt.Sprintf("ifconfig %s txqueuelen 5000\n", *tunname)
 	err = exec.Command("sh","-c", confs).Run()
 	if err != nil {
-		log.Printf("open err:%s, confs = %s \n", err.Error(), confs)
+		mylog.Error("open err:%s, confs = %s \n", err.Error(), confs)
 		log.Fatal(err)
 	}
-	log.Printf("================%s open ==========\n", *tunname)
+	mylog.Info("================%s open ==========\n", *tunname)
 }
 
 func (tun *mytun) Read() {
@@ -280,7 +280,7 @@ func (c *myconn) Connecting() {
 	n := 1
 	ReConnect:
 
-	log.Printf("now connecting to  %s \n", *server)
+	mylog.Info("now connecting to  %s \n", *server)
 	if *tlsEnable {
 		tlsconf := &tls.Config{
  			InsecureSkipVerify: true,
@@ -292,13 +292,13 @@ func (c *myconn) Connecting() {
 	}
 
 	if err != nil {
-		log.Printf("try to connect to  %s time =%d, err=%s\n", *server, n, err.Error())
+		mylog.Notice("try to connect to  %s time =%d, err=%s\n", *server, n, err.Error())
 		n += 1
 		time.Sleep(time.Second * 2)
 		goto ReConnect
 	}
 
-	log.Println("success ,clinet:", c.conn.LocalAddr().String(),"connect to Server:", c.conn.RemoteAddr())
+	mylog.Info("success ,client:%s connect to Server:%s \n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
 }
 
 func (c *myconn) Listenning() {
@@ -319,15 +319,15 @@ func (c *myconn) Listenning() {
 	//ln, err := net.Listen("tcp4", *lnAddr)
 	if err != nil {
 		log.Fatalln(err)
-	}	
-	log.Printf("\n %s listenning .......\n", *lnAddr)
+	}
+	mylog.Info("\n %s listenning .......\n", *lnAddr)
 	c.conn, err = ln.Accept()
 	if err != nil {
 		log.Fatalln(err)
 	}
 	ln.Close()
-				
-	log.Printf("new connect :%s ->  %s\n", c.conn.RemoteAddr().String(), c.conn.LocalAddr().String())
+
+	mylog.Info("new connect :%s ->  %s\n", c.conn.RemoteAddr().String(), c.conn.LocalAddr().String())
 }
 
 func (c *myconn) Open() {
@@ -356,19 +356,19 @@ func (c *myconn) setTcpSockOpt() {
 			kaConn.SetKeepAliveInterval(time.Duration(KeepAliveIntv) * time.Second)	
 		}	
 	} else {
-		log.Printf("setTcpSockOpt fail: %s isn't a tcp connect \n", c.conn.RemoteAddr().String())
+		mylog.Warning("setTcpSockOpt fail: %s isn't a tcp connect \n", c.conn.RemoteAddr().String())
 	}
 }
 
 func (c *myconn) isHeartBeat(pkt []byte) bool {
 	if strings.Compare(string(pkt), HearBeatReq) == 0 {	
-		log.Println("recv a heartbeat request from ", c.conn.RemoteAddr().String())
+		mylog.Info("recv a heartbeat request from %s \n", c.conn.RemoteAddr().String())
 		//send heartbeat reply
 		c.sendHeartBeat(HBReply)
 		return true
 	}
 	if strings.Compare(string(pkt), HearBeatRpl) == 0 {
-		log.Println("recv a heartbeat reply from ", c.conn.RemoteAddr().String())
+		mylog.Info("recv a heartbeat reply from %s\n", c.conn.RemoteAddr().String())
 		c.rx_bytes += uint64(HearBeatLen)
 		//c.hbTimer.Reset(time.Second * time.Duration(HBTimeout))
 		return true	
@@ -379,6 +379,7 @@ func (c *myconn) isHeartBeat(pkt []byte) bool {
 func (c *myconn) Read() {
 	defer c.Reconnect()
 	pkt := make(packet.Packet, 2048)
+	//cr := bufio.NewReader(c.conn)
 	var cr *bufio.Reader
 	if *DownRateLimit != 0 {
 		bk := ratelimit.NewBucketWithRate(float64(*DownRateLimit), int64(*DownRateLimit))
@@ -408,7 +409,7 @@ func (c *myconn) Read() {
 		// }		
 		lenBuf, err := cr.Peek(2)	
 		if err != nil {
-			log.Println("conn read fail:", err.Error())			
+			mylog.Error("conn read fail: %s\n", err.Error())
 			break
 		}
 
@@ -417,7 +418,7 @@ func (c *myconn) Read() {
 			if pktLen == HearBeatLen {
 				rn, err := io.ReadFull(cr, pkt[:pktLen+2])
 				if err != nil {
-					log.Println("ReadFull fail: %s, rn=%d, want=%d\n", err.Error(), rn, pktLen+2)
+					mylog.Error("ReadFull fail: %s, rn=%d, want=%d\n", err.Error(), rn, pktLen+2)
 					break
 				}
 				
@@ -430,7 +431,7 @@ func (c *myconn) Read() {
 
 		rn, err := io.ReadFull(cr, pkt[:pktLen+2])
 		if err != nil {
-			log.Println("ReadFull fail: %s, rn=%d, want=%d\n", err.Error(), rn, pktLen+2)
+			mylog.Error("ReadFull fail: %s, rn=%d, want=%d\n", err.Error(), rn, pktLen+2)
 			break
 		}
 
@@ -563,16 +564,16 @@ func (c *myconn) WriteFromChan() {
 		select {
 			case pkt, ok := <- c.pktchan:
 				if !ok {
-					log.Printf("%s -> %s pktchan closed, quit the writefromchan  goroutine\n",
+				mylog.Notice("%s -> %s pktchan closed, quit the writefromchan  goroutine\n",
 						 c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
-					log.Printf(" c.pktchan is closed, quit the writefromchan  goroutine\n")		
+				mylog.Notice(" c.pktchan is closed, quit the writefromchan  goroutine\n")
 					return	
 				}
 
 				//wn, err := c.conn.Write(pkt)
 				wn, err := wd.Write(pkt)
 				if err != nil{
-					log.Printf(" write len=%d, err=%s\n", wn, err.Error())		
+				mylog.Error(" write len=%d, err=%s\n", wn, err.Error())
 					return
 				}
 
@@ -586,11 +587,11 @@ func (c *myconn) WriteFromChan() {
 				}
 			case q, ok := <-c.writeQuit:
 				if !ok {
-					log.Printf(" c.writeQuit is closed , quit the writefromchan  goroutine\n")		
+				mylog.Notice(" c.writeQuit is closed , quit the writefromchan  goroutine\n")
 				} else {
-					log.Printf("chan write_quit recive message: quit=%v, ok=%v\n", q, ok)	
+				mylog.Notice("chan write_quit recive message: quit=%v, ok=%v\n", q, ok)
 				}					
-				log.Printf("%s -> %s WriteFromChan quit \n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())				
+			mylog.Notice("%s -> %s WriteFromChan quit \n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
 				return				
 			// case <- time.After(time.Minute * 1):
 			// 	log.Printf(" time out, send obc heartbeat \n")				
@@ -646,30 +647,30 @@ func (c *myconn) HeartBeat() {
 	
 	for {
 		if c.IsClose() {
-			log.Printf(" %s is closed, HeartBeat quit\n", c.conn.RemoteAddr().String())
+			mylog.Notice(" %s is closed, HeartBeat quit\n", c.conn.RemoteAddr().String())
 			return
 		}
 		rx := c.rx_bytes
-		log.Printf("HeartBeat wait to timer up timeout_count =%d, c.rx_bytes=%d\n", timeout_count, c.rx_bytes)
+		mylog.Info("HeartBeat wait to timer up timeout_count =%d, c.rx_bytes=%d\n", timeout_count, c.rx_bytes)
 		<- c.hbTimer.C
 
 		if c.IsClose() {
-			log.Printf("==== %s is closed, HeartBeat quit ====\n", c.conn.RemoteAddr().String())
+			mylog.Notice("==== %s is closed, HeartBeat quit ====\n", c.conn.RemoteAddr().String())
 			return
 		}
 
 		if rx == c.rx_bytes {
 			if timeout_count >= 3 {
-				log.Printf("=== HeartBeat quit:  timeout_count =%d, rx =%d, c.rx_bytes =%d =====\n", timeout_count, rx, c.rx_bytes)
+				mylog.Warning("=== HeartBeat quit:  timeout_count =%d, rx =%d, c.rx_bytes =%d =====\n", timeout_count, rx, c.rx_bytes)
 				return
 			}
 			//TODO send heartbeat requst packet
-			log.Printf("%d Second timeout, need to send HeartBeat request, rx =%d, c.rx_bytes =%d\n", HBTimeout, rx, c.rx_bytes)
+			mylog.Info("%d Second timeout, need to send HeartBeat request, rx =%d, c.rx_bytes =%d\n", HBTimeout, rx, c.rx_bytes)
 			c.sendHeartBeat(HBRequest)
 			c.hbTimer.Reset(time.Second * 5)
 			timeout_count++	
 		} else {
-			log.Printf("have received some pkt, no need to send HeartBeat rx =%d, c.rx_bytes =%d", rx, c.rx_bytes)
+			mylog.Info("have received some pkt, no need to send HeartBeat rx =%d, c.rx_bytes =%d", rx, c.rx_bytes)
 			c.hbTimer.Reset(time.Second * time.Duration(HBTimeout))
 			timeout_count = 0	
 		}		
@@ -679,7 +680,7 @@ func (c *myconn) HeartBeat() {
 func (c *myconn) Close() bool {	
 	c.Lock()
 	if !c.isClosed {
-		log.Printf("%s -> %s is  closing \n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
+		mylog.Notice("%s -> %s is  closing \n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
 		c.isClosed = true
 		c.Unlock()
 		c.hbTimer.Reset(time.Millisecond * 10)// for heartbeat goroutine quit quickly
@@ -688,7 +689,7 @@ func (c *myconn) Close() bool {
 		time.Sleep(time.Millisecond * 10)
 		close(c.pktchan)
 		close(c.writeQuit)
-		log.Printf("%s -> %s is  closed \n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
+		mylog.Notice("%s -> %s is  closed \n", c.conn.LocalAddr().String(), c.conn.RemoteAddr().String())
 		return true
 	}
 	c.Unlock()
