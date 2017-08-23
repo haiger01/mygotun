@@ -20,6 +20,7 @@ openssl genrsa -out server.key 2048
 openssl req -new -x509 -key server.key -out server.pem -days3650
 服务器侦听前:cert, err := tls.LoadX509KeyPair(crt, key)  
 此证书没有被权威机构签名的,所以客户端连接时 InsecureSkipVerify: true,
+设置为true,则不会校验证书以及证书中的主机名和服务器主机名是否一致
 */
 var (
 	config Vl2Config
