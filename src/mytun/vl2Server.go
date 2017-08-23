@@ -18,6 +18,8 @@ import(
 openssl genrsa -out server.key 2048
 2、 生成服务器端证书
 openssl req -new -x509 -key server.key -out server.pem -days3650
+服务器侦听前:cert, err := tls.LoadX509KeyPair(crt, key)  
+此证书没有被权威机构签名的,所以客户端连接时 InsecureSkipVerify: true,
 */
 var (
 	config Vl2Config
