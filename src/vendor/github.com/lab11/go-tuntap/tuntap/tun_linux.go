@@ -1,6 +1,7 @@
 package tuntap
 
 import (
+	"errors"
 	"os"
 	"unsafe"
 	"syscall"
@@ -15,6 +16,9 @@ func createInterface(file *os.File, ifPattern string, kind DevKind, meta bool) (
 	var req ifReq
 	//req.Flags = iffOneQueue
 	req.Flags = 0
+	if len(ifPattern) > 15 {
+		return "", errors.New("tun/tap name too long")
+	}
 	copy(req.Name[:15], ifPattern)
 	switch kind {
 	case DevTun:
@@ -31,5 +35,5 @@ func createInterface(file *os.File, ifPattern string, kind DevKind, meta bool) (
 	if err != 0 {
 		return "", err
 	}
-	return string(req.Name[:]), nil
+	return string(req.Name[:len(ifPattern)]), nil
 }
