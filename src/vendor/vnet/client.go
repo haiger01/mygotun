@@ -49,6 +49,7 @@ type Client struct {
 	pktchan   chan packet.Packet
 	reconnect chan bool
 	isClosed  bool
+	p2p       bool
 	peer      *Client
 	sync.Mutex
 	rx_bytes uint64
@@ -72,13 +73,12 @@ func init() {
 }
 
 func NewClient(cio VnetIO) *Client {
-	c := &Client{
+	return &Client{
 		cio:       cio,
 		pktchan:   make(chan packet.Packet, *ChanSize),
 		reconnect: make(chan bool, 1),
 		isClosed:  false,
 	}
-	return c
 }
 
 func CreateConnClient(conn net.Conn) (*Client, error) {
@@ -86,8 +86,8 @@ func CreateConnClient(conn net.Conn) (*Client, error) {
 	return NewClient(vc), nil
 }
 
-func CreateTunClient() (*Client, error) {
-	tun, err := OpenTun(*Br, *TunName, *TunType, *Ipstr)
+func CreateTunClient(auto bool) (*Client, error) {
+	tun, err := OpenTun(*Br, *TunName, *TunType, *Ipstr, auto)
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +96,8 @@ func CreateTunClient() (*Client, error) {
 }
 
 func bindPairClient(c1, c2 *Client) {
+	c1.p2p = true
+	c2.p2p = true
 	c1.peer = c2
 	c2.peer = c1
 }
@@ -117,23 +119,32 @@ func (c *Client) peerString() string {
 	return c.peer.String()
 }
 
-func HandleConn(conn net.Conn) {
-	vc, _ := CreateConnClient(conn)
-
+func HandleConn(conn net.Conn, isClient bool) {
+	vcc, _ := CreateConnClient(conn)
 	if *BindTun {
-		vtc, err := CreateTunClient()
+		//if is socket client, tun dev name should auto generate
+		autoGenTunName := !isClient
+		vtc, err := CreateTunClient(autoGenTunName)
 		if err != nil {
-			mylog.Error("%s, so Close %s", err.Error(), vc.String())
-			vc.Close()
+			mylog.Error("%s, so Close %s", err.Error(), vcc.String())
+			vcc.Close()
 			return
 		}
-		bindPairClient(vc, vtc)
-		tcMap[vtc.cio.(*mytun).Name()] = vc
+		mylog.Info("binding %s to %s", vtc.String(), vcc.String())
+		bindPairClient(vcc, vtc)
+		tcMap[vtc.cio.(*mytun).Name()] = vcc
 		vtc.Working()
+	} else {
+		// add client to fdb
 	}
-	vc.Working()
-	//<-c.reconnect
-	//close(c.reconnect)
+	vcc.Working()
+
+	//if is socket client, it means auto reconnect
+	if isClient {
+		<-vcc.reconnect
+		close(vcc.reconnect)
+		mylog.Info("reconnecting %s\n", vcc.String())
+	}
 }
 
 func (c *Client) Working() {
@@ -304,9 +315,15 @@ func (c *Client) sendHeartBeat(hbType int) {
 	mylog.Info("sending HeartBeat  %s for %s ok \n", sendstring, c.String())
 }
 
-func ForwardPkt(c *Client, pkt []byte) {
+func (c *Client) FwdToPeer(pkt []byte) {
 	if c.peer != nil {
 		c.peer.PutPktToChan(pkt)
+	}
+}
+
+func ForwardPkt(c *Client, pkt []byte) {
+	if c.p2p {
+		c.FwdToPeer(pkt)
 		return
 	}
 	//TODO FDB FORWARD

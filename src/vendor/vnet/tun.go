@@ -20,7 +20,7 @@ var (
 	TunType     = flag.Int("tuntype", int(tuntap.DevTap), " type, 1 means tap and 0 means tun")
 	TunName     = flag.String("tundev", "tap0", " tun dev name")
 	Ipstr       = flag.String("ipstr", "", "set tun/tap or br ip address")
-	HQMode      = flag.Bool("hq", false, "HQ mode ,default false")
+	//HQMode      = flag.Bool("hq", false, "HQ mode ,default false")
 )
 
 const (
@@ -66,13 +66,13 @@ func (tun *mytun) Name() string {
 	return tun.tund.Name()
 }
 
-func OpenTun(br string, tunname string, tuntype int, ipstr string) (tun *mytun, err error) {
-	if *HQMode {
+func OpenTun(br string, tunname string, tuntype int, ipstr string, auto bool) (tun *mytun, err error) {
+	tun = NewTun(tuntype)
+	if auto {
 		tunname = tunname + fmt.Sprintf("%d", tun.devId)
 	}
 	mylog.Info("create dev :%s ,(devId:%d), *tuntype=%d\n", tunname, tun.devId, tuntype)
 
-	tun = NewTun(tuntype)
 	tun.tund, err = tuntap.Open(tunname, tuntap.DevKind(tuntype), false)
 	if err != nil {
 		return nil, err
@@ -110,7 +110,7 @@ func (tun *mytun) Read(buf []byte) (n int, err error) {
 		return
 	}
 	n = len(inpkt.Packet)
-	if n < 42 || n > 1514 {
+	if n < 28 || n > 1518 {
 		log.Printf("======tun read len=%d out of range =======\n", n)
 		return
 	}
