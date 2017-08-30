@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"packet"
+	"strings"
 	"sync"
 	"time"
 
@@ -143,6 +144,7 @@ func HandleConn(conn net.Conn, isClient bool) {
 	if isClient {
 		<-vcc.reconnect
 		close(vcc.reconnect)
+		time.Sleep(time.Second * 2)
 		mylog.Info("reconnecting %s\n", vcc.String())
 	}
 }
@@ -186,7 +188,7 @@ func (c *Client) Close() error {
 		if peer := c.releasePeer(); peer != nil {
 			peer.Close()
 		}
-		mylog.Notice("% is closed \n", c.String())
+		mylog.Notice("%s is closed \n", c.String())
 		return nil
 	}
 	c.Unlock()
@@ -201,7 +203,7 @@ func (c *Client) Reconnect() {
 }
 
 func (c *Client) ReadForward() {
-	defer c.Close()
+	defer c.Reconnect()
 	pkt := make(packet.Packet, 2048)
 
 	var cr *bufio.Reader
@@ -217,7 +219,16 @@ func (c *Client) ReadForward() {
 		rn, err := cr.Read(pkt)
 		if err != nil {
 			mylog.Error("%s read fail:%s", c.String(), err.Error())
-			break
+			if err.Error() == "vnetFilter" {
+				mylog.Info("=======vnetFilter read again========\n")
+				continue
+			}
+			return
+		}
+		if rn == HearBeatLen+HeadSize {
+			if c.checkHeartBeat(pkt[HeadSize:rn]) {
+				continue
+			}
 		}
 		data := make([]byte, rn)
 		copy(data, pkt[:rn])
@@ -244,6 +255,22 @@ func (c *Client) WriteFromChan() {
 		c.tx_bytes += uint64(wn)
 	}
 	mylog.Notice(" %s WriteFromChan quit \n", c.String())
+}
+
+func (c *Client) checkHeartBeat(pkt []byte) bool {
+	if strings.Compare(string(pkt), HearBeatReq) == 0 {
+		mylog.Info("recv a heartbeat request from %s \n", c.String())
+		//send heartbeat reply
+		c.sendHeartBeat(HBReply)
+		return true
+	}
+	if strings.Compare(string(pkt), HearBeatRpl) == 0 {
+		mylog.Info("recv a heartbeat reply from %s\n", c.String())
+		c.rx_bytes += uint64(HearBeatLen)
+		//c.hbTimer.Reset(time.Second * time.Duration(HBTimeout))
+		return true
+	}
+	return false
 }
 
 func (c *Client) HeartBeat() {

@@ -2,6 +2,7 @@ package vnet
 
 import (
 	"encoding/binary"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -102,6 +103,7 @@ func OpenTun(br string, tunname string, tuntype int, ipstr string, auto bool) (t
 func (tun *mytun) Read(buf []byte) (n int, err error) {
 	var inpkt *tuntap.Packet
 	n = 0
+ReRead:
 	inpkt, err = tun.tund.ReadPacket2(buf[HeadSize:])
 	//inpkt, err := tun.tund.ReadPacket()
 	if err != nil {
@@ -112,8 +114,10 @@ func (tun *mytun) Read(buf []byte) (n int, err error) {
 	n = len(inpkt.Packet)
 	if n < 28 || n > 1518 {
 		log.Printf("======tun read len=%d out of range =======\n", n)
+		err = errors.New("invaild pkt of vnetTun")
 		return
 	}
+
 	if tun.devType == int(tuntap.DevTap) {
 		ether := packet.TranEther(inpkt.Packet)
 		if ether.IsBroadcast() && ether.IsArp() {
@@ -122,8 +126,10 @@ func (tun *mytun) Read(buf []byte) (n int, err error) {
 			log.Printf("src mac :%s", ether.SrcMac.String())
 		}
 		if !ether.IsArp() && !ether.IsIpPtk() {
-			//mylog.Warning(" not arp ,and not ip packet, ether type =0x%0x%0x ===============\n", ether.Proto[0], ether.Proto[1])
-			return
+			mylog.Warning(" not arp ,and not ip packet, ether type =0x%0x%0x ===============\n", ether.Proto[0], ether.Proto[1])
+			goto ReRead
+			//err = errors.New("vnetFilter")
+			//return
 		}
 		if *DebugEn && ether.IsIpPtk() {
 			iphdr, err := packet.ParseIPHeader(inpkt.Packet[packet.EtherSize:])
@@ -133,6 +139,7 @@ func (tun *mytun) Read(buf []byte) (n int, err error) {
 			log.Println("tun read ", iphdr.String())
 		}
 	}
+
 	binary.BigEndian.PutUint16(buf, uint16(n))
 	copy(buf[HeadSize:], inpkt.Packet[:n])
 	n += HeadSize
@@ -152,7 +159,7 @@ func (tun *mytun) Write(pkt []byte) (n int, err error) {
 
 func (tun *mytun) Close() error {
 	mylog.Notice("=====close dev =%s \n", tun.Name())
-	cmd := fmt.Sprintf(`sudo ip link delete %s`, tun.Name())
+	cmd := fmt.Sprintf(`ip link delete %s`, tun.Name())
 	err := exec.Command("sh", "-c", cmd).Run()
 	if err != nil {
 		mylog.Error("open err:%s, cmd = %s \n", err.Error(), cmd)

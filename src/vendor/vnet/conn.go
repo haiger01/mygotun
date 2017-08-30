@@ -3,6 +3,7 @@ package vnet
 import (
 	"bufio"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -25,15 +26,19 @@ func NewVnetConn(conn net.Conn) *vnetConn {
 
 func (vconn *vnetConn) Read(b []byte) (n int, err error) {
 	var cr = bufio.NewReader(vconn.conn)
-	lenBuf, err := cr.Peek(HeadSize)
+	var lenBuf []byte
+	lenBuf, err = cr.Peek(HeadSize)
 	if err != nil {
 		log.Println("conn read fail:", err.Error())
 		return
 	}
 	pktLen := int(binary.BigEndian.Uint16(lenBuf))
 	if pktLen < 28 || pktLen > 1514 {
-		log.Printf("parase pktLen=%d out of range \n", pktLen)
-		return
+		if pktLen != HearBeatLen {
+			log.Printf("parase pktLen=%d out of range \n", pktLen)
+			err = errors.New("invaild pkt of vnetConn")
+			return
+		}
 	}
 	n, err = io.ReadFull(cr, b[:pktLen+HeadSize])
 	if err != nil {
